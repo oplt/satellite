@@ -261,8 +261,8 @@ export default function DashboardPage() {
                         projects={projects ?? []}
                         projectsLoading={projectsLoading}
                         onOpenProjects={() => navigate("/projects")}
-                        allowedMonthSpans={[1]}
-                        initialMonthSpan={1}
+                        allowedViews={["month"]}
+                        initialView="month"
                     />
 
                     <SectionCard

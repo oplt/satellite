@@ -45,8 +45,8 @@ export default function CalendarPage() {
                 projects={projects ?? []}
                 projectsLoading={projectsLoading}
                 onOpenProjects={() => navigate("/projects")}
-                allowedMonthSpans={[1, 3, 6, 12]}
-                initialMonthSpan={3}
+                allowedViews={["day", "week", "month", "twelve_month"]}
+                initialView="month"
             />
         </PageShell>
     );

@@ -31,15 +31,15 @@ import { formatDateOnly, humanizeKey } from "../../utils/formatters";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionCard } from "../ui/SectionCard";
 
+type CalendarViewMode = "day" | "week" | "month" | "twelve_month";
+
 type DashboardCalendarProps = {
     projects: Project[];
     projectsLoading: boolean;
     onOpenProjects: () => void;
-    allowedMonthSpans?: MonthSpan[];
-    initialMonthSpan?: MonthSpan;
+    allowedViews?: CalendarViewMode[];
+    initialView?: CalendarViewMode;
 };
-
-type MonthSpan = 1 | 3 | 6 | 12;
 
 type CalendarDraft = {
     type: CalendarItemType;
@@ -51,7 +51,12 @@ type CalendarDraft = {
     priority: ProjectTaskPriority;
 };
 
-const RANGE_OPTIONS: MonthSpan[] = [1, 3, 6, 12];
+const VIEW_OPTIONS: Array<{ value: CalendarViewMode; label: string }> = [
+    { value: "day", label: "Day" },
+    { value: "week", label: "Week" },
+    { value: "month", label: "Month" },
+    { value: "twelve_month", label: "12M" },
+];
 const ITEM_TYPE_OPTIONS: Array<{ value: CalendarItemType; label: string }> = [
     { value: "event", label: "Event" },
     { value: "appointment", label: "Appointment" },
@@ -59,24 +64,16 @@ const ITEM_TYPE_OPTIONS: Array<{ value: CalendarItemType; label: string }> = [
 ];
 const TASK_PRIORITY_OPTIONS: ProjectTaskPriority[] = ["low", "medium", "high", "urgent"];
 
-function getCalendarColumns(monthSpan: MonthSpan) {
+function buildEmptyDraft(projects: Project[], type: CalendarItemType = "event"): CalendarDraft {
     return {
-        xs: "1fr",
-        md:
-            monthSpan === 1
-                ? "1fr"
-                : monthSpan === 3
-                    ? "repeat(2, minmax(0, 1fr))"
-                    : "repeat(2, minmax(0, 1fr))",
-        xl:
-            monthSpan === 1
-                ? "1fr"
-                : monthSpan === 3
-                    ? "repeat(3, minmax(0, 1fr))"
-                    : monthSpan === 6
-                        ? "repeat(3, minmax(0, 1fr))"
-                        : "repeat(4, minmax(0, 1fr))",
-    } as const;
+        type,
+        title: "",
+        description: "",
+        start_time: "",
+        end_time: "",
+        project_id: projects[0]?.id ?? "",
+        priority: "medium",
+    };
 }
 
 function formatTimeValue(value: string) {
@@ -96,6 +93,33 @@ function formatItemTime(item: CalendarItem) {
     return `${formatTimeValue(item.start_time)} to ${formatTimeValue(item.end_time)}`;
 }
 
+function getMinutesFromTimeString(value: string) {
+    const [hours = "0", minutes = "0"] = value.split(":");
+    return Number(hours) * 60 + Number(minutes);
+}
+
+function getWeekItemColor(item: CalendarItem) {
+    if (item.type === "task") {
+        return {
+            bg: "#ecfdf3",
+            border: "#a6f4c5",
+            text: "#027a48",
+        };
+    }
+    if (item.type === "appointment") {
+        return {
+            bg: "#f4f3ff",
+            border: "#d9d6fe",
+            text: "#7a22ff",
+        };
+    }
+    return {
+        bg: "#eef4ff",
+        border: "#b2ddff",
+        text: "#175cd3",
+    };
+}
+
 function getItemIcon(type: CalendarItemType) {
     if (type === "task") {
         return <TaskIcon fontSize="small" />;
@@ -106,57 +130,192 @@ function getItemIcon(type: CalendarItemType) {
     return <EventIcon fontSize="small" />;
 }
 
-function buildEmptyDraft(projects: Project[], type: CalendarItemType = "event"): CalendarDraft {
+function getDateCalendarSx(daySize: number) {
     return {
-        type,
-        title: "",
-        description: "",
-        start_time: "",
-        end_time: "",
-        project_id: projects[0]?.id ?? "",
-        priority: "medium",
+        width: "100%",
+        maxWidth: "none",
+        m: 0,
+        "& .MuiPickersCalendarHeader-root": {
+            px: 1,
+            mb: 0.5,
+        },
+        "& .MuiPickersCalendarHeader-switchViewButton": {
+            display: "none",
+        },
+        "& .MuiPickersCalendarHeader-label": {
+            fontSize: "1rem",
+            fontWeight: 700,
+        },
+        "& .MuiDayCalendar-header": {
+            justifyContent: "space-between",
+            px: 0.75,
+        },
+        "& .MuiDayCalendar-weekDayLabel": {
+            width: daySize,
+            color: "text.secondary",
+            fontWeight: 700,
+        },
+        "& .MuiDayCalendar-weekContainer": {
+            justifyContent: "space-between",
+            mt: 0.5,
+        },
+    } as const;
+}
+
+function getMonthGridColumns(viewMode: CalendarViewMode) {
+    if (viewMode === "twelve_month") {
+        return {
+            xs: "1fr",
+            md: "repeat(2, minmax(0, 1fr))",
+            xl: "repeat(4, minmax(0, 1fr))",
+        } as const;
+    }
+
+    return { xs: "1fr" } as const;
+}
+
+function getQueryRange(viewMode: CalendarViewMode, anchorDate: Dayjs) {
+    if (viewMode === "day") {
+        const dateKey = anchorDate.startOf("day").format("YYYY-MM-DD");
+        return { start: dateKey, end: dateKey };
+    }
+
+    if (viewMode === "week") {
+        return {
+            start: anchorDate.startOf("week").format("YYYY-MM-DD"),
+            end: anchorDate.endOf("week").format("YYYY-MM-DD"),
+        };
+    }
+
+    if (viewMode === "twelve_month") {
+        const startMonth = anchorDate.startOf("month");
+        const endMonth = startMonth.add(11, "month");
+        return {
+            start: startMonth.startOf("month").startOf("week").format("YYYY-MM-DD"),
+            end: endMonth.endOf("month").endOf("week").format("YYYY-MM-DD"),
+        };
+    }
+
+    return {
+        start: anchorDate.startOf("month").startOf("week").format("YYYY-MM-DD"),
+        end: anchorDate.endOf("month").endOf("week").format("YYYY-MM-DD"),
     };
+}
+
+function shiftAnchorDate(current: Dayjs, viewMode: CalendarViewMode, direction: 1 | -1) {
+    if (viewMode === "day") {
+        return current.add(direction, "day");
+    }
+    if (viewMode === "week") {
+        return current.add(direction, "week");
+    }
+    if (viewMode === "twelve_month") {
+        return current.add(direction * 12, "month");
+    }
+    return current.add(direction, "month");
+}
+
+function DayItems({
+    items,
+    emptyTitle,
+    emptyDescription,
+}: {
+    items: CalendarItem[];
+    emptyTitle: string;
+    emptyDescription: string;
+}) {
+    if (items.length === 0) {
+        return (
+            <EmptyState
+                icon={<EventIcon />}
+                title={emptyTitle}
+                description={emptyDescription}
+            />
+        );
+    }
+
+    return (
+        <Stack spacing={1}>
+            {items.map((item) => (
+                <Box
+                    key={item.id}
+                    sx={(theme) => ({
+                        borderRadius: 3,
+                        border: `1px solid ${theme.palette.divider}`,
+                        p: 1.5,
+                        backgroundColor:
+                            item.type === "task"
+                                ? alpha(theme.palette.success.main, theme.palette.mode === "dark" ? 0.16 : 0.08)
+                                : theme.palette.background.paper,
+                    })}
+                >
+                    <Stack spacing={0.75}>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                            {getItemIcon(item.type)}
+                            <Typography variant="subtitle2">{item.title}</Typography>
+                        </Stack>
+                        <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                            <Chip label={humanizeKey(item.type)} size="small" variant="outlined" />
+                            <Chip label={formatItemTime(item)} size="small" variant="outlined" />
+                            {item.project_name && (
+                                <Chip label={item.project_name} size="small" variant="outlined" />
+                            )}
+                            {item.status && (
+                                <Chip label={humanizeKey(item.status)} size="small" variant="outlined" />
+                            )}
+                            {item.priority && (
+                                <Chip
+                                    label={`${humanizeKey(item.priority)} priority`}
+                                    size="small"
+                                    variant="outlined"
+                                />
+                            )}
+                        </Stack>
+                        {item.description && (
+                            <Typography variant="body2" color="text.secondary">
+                                {item.description}
+                            </Typography>
+                        )}
+                    </Stack>
+                </Box>
+            ))}
+        </Stack>
+    );
 }
 
 export function DashboardCalendar({
     projects,
     projectsLoading,
     onOpenProjects,
-    allowedMonthSpans = RANGE_OPTIONS,
-    initialMonthSpan = 3,
+    allowedViews = ["month"],
+    initialView = "month",
 }: DashboardCalendarProps) {
     const queryClient = useQueryClient();
     const { showToast } = useSnackbar();
-    const [monthSpan, setMonthSpan] = useState<MonthSpan>(initialMonthSpan);
-    const [monthOffset, setMonthOffset] = useState(0);
+    const [viewMode, setViewMode] = useState<CalendarViewMode>(initialView);
+    const [anchorDate, setAnchorDate] = useState(dayjs().startOf("day"));
     const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [draft, setDraft] = useState<CalendarDraft>(buildEmptyDraft(projects));
     const [formError, setFormError] = useState("");
 
-    const today = dayjs().startOf("day");
-    const visibleMonthStart = today.startOf("month").add(monthOffset, "month");
-    const visibleMonths = Array.from({ length: monthSpan }, (_, index) =>
-        visibleMonthStart.add(index, "month")
-    );
-    const queryStart = visibleMonths[0].startOf("month").startOf("week").format("YYYY-MM-DD");
-    const queryEnd = visibleMonths[visibleMonths.length - 1]
-        .endOf("month")
-        .endOf("week")
-        .format("YYYY-MM-DD");
-    const selectedDate = selectedDateKey ? dayjs(selectedDateKey) : null;
+    const { start, end } = getQueryRange(viewMode, anchorDate);
+    const selectedDate = selectedDateKey ? dayjs(selectedDateKey) : anchorDate;
+    const visibleMonths =
+        viewMode === "twelve_month"
+            ? Array.from({ length: 12 }, (_, index) => anchorDate.startOf("month").add(index, "month"))
+            : [anchorDate.startOf("month")];
+    const daySize = viewMode === "twelve_month" ? 34 : 40;
 
     const { data: calendarItems, isLoading, error } = useQuery({
-        queryKey: ["calendar", "items", queryStart, queryEnd],
-        queryFn: () => listCalendarItems(queryStart, queryEnd),
+        queryKey: ["calendar", "items", start, end],
+        queryFn: () => listCalendarItems(start, end),
     });
 
     const itemsByDate = (calendarItems ?? []).reduce<Record<string, CalendarItem[]>>((accumulator, item) => {
         accumulator[item.date] = [...(accumulator[item.date] ?? []), item];
         return accumulator;
     }, {});
-    const selectedDateItems = selectedDateKey ? itemsByDate[selectedDateKey] ?? [] : [];
-    const daySize = monthSpan >= 6 ? 34 : 40;
 
     const createItemMutation = useMutation({
         mutationFn: () =>
@@ -164,7 +323,7 @@ export function DashboardCalendar({
                 type: draft.type,
                 title: draft.title.trim(),
                 description: draft.description.trim() || null,
-                date: selectedDateKey ?? today.format("YYYY-MM-DD"),
+                date: selectedDateKey ?? anchorDate.format("YYYY-MM-DD"),
                 start_time: draft.type === "task" ? null : draft.start_time || null,
                 end_time: draft.type === "task" ? null : draft.end_time || null,
                 project_id: draft.type === "task" ? draft.project_id || null : null,
@@ -193,9 +352,9 @@ export function DashboardCalendar({
     });
 
     function openDay(value: Dayjs | string) {
-        const nextDateKey =
-            typeof value === "string" ? value : value.startOf("day").format("YYYY-MM-DD");
-        setSelectedDateKey(nextDateKey);
+        const nextDate = typeof value === "string" ? dayjs(value) : value.startOf("day");
+        setSelectedDateKey(nextDate.format("YYYY-MM-DD"));
+        setAnchorDate(nextDate);
         setDrawerOpen(true);
         setFormError("");
         setDraft((current) => ({
@@ -317,14 +476,585 @@ export function DashboardCalendar({
         );
     }
 
+    function renderDateCalendar(date: Dayjs) {
+        return (
+            <DateCalendar
+                value={selectedDate.isSame(date, "month") ? selectedDate : null}
+                onChange={(newValue) => {
+                    if (newValue) {
+                        setAnchorDate(newValue.startOf("day"));
+                    }
+                }}
+                referenceDate={date}
+                views={["day"]}
+                showDaysOutsideCurrentMonth
+                fixedWeekNumber={6}
+                reduceAnimations
+                slots={{ day: CalendarDay }}
+                sx={getDateCalendarSx(daySize)}
+            />
+        );
+    }
+
+    function renderDayView() {
+        const dayKey = anchorDate.format("YYYY-MM-DD");
+        const dayItems = itemsByDate[dayKey] ?? [];
+        const timedItems = dayItems
+            .filter((item) => item.start_time)
+            .map((item) => {
+                const startMinutes = getMinutesFromTimeString(item.start_time ?? "09:00");
+                const endMinutes = item.end_time
+                    ? getMinutesFromTimeString(item.end_time)
+                    : startMinutes + 60;
+                const clampedEnd = Math.max(endMinutes, startMinutes + 30);
+
+                return {
+                    ...item,
+                    startMinutes,
+                    endMinutes: clampedEnd,
+                };
+            });
+        const allDayItems = dayItems.filter((item) => !item.start_time);
+        const hourSlots = Array.from({ length: 24 }, (_, index) => index);
+        const rowHeight = 56;
+        const gridStartMinutes = 0;
+        const now = dayjs();
+        const isToday = anchorDate.isSame(now, "day");
+        const nowMinutes = now.hour() * 60 + now.minute();
+        const nowTop = (nowMinutes / 60) * rowHeight;
+        const selectedDetailItem = timedItems[0] ?? allDayItems[0] ?? dayItems[0] ?? null;
+
+        return (
+            <Box
+                sx={{
+                    display: "grid",
+                    gap: 2,
+                    gridTemplateColumns: { xs: "1fr", xl: "minmax(0, 1.5fr) 360px" },
+                }}
+            >
+                <Box
+                    sx={(theme) => ({
+                        borderRadius: 4,
+                        border: `1px solid ${theme.palette.divider}`,
+                        overflow: "hidden",
+                        backgroundColor: theme.palette.background.paper,
+                    })}
+                >
+                    <Stack
+                        direction={{ xs: "column", sm: "row" }}
+                        justifyContent="space-between"
+                        spacing={1.5}
+                        sx={(theme) => ({
+                            px: 2,
+                            py: 1.5,
+                            borderBottom: `1px solid ${theme.palette.divider}`,
+                            backgroundColor: theme.palette.background.default,
+                        })}
+                    >
+                        <Box>
+                            <Typography variant="h6">{formatDateOnly(dayKey)}</Typography>
+                            <Typography variant="body2" color="text.secondary">
+                                Focused view for one day of scheduled work.
+                            </Typography>
+                        </Box>
+                        <Button variant="contained" onClick={() => openDay(anchorDate)}>
+                            Add item
+                        </Button>
+                    </Stack>
+
+                    {allDayItems.length > 0 && (
+                        <Box
+                            sx={(theme) => ({
+                                px: 2,
+                                py: 1.25,
+                                borderBottom: `1px solid ${theme.palette.divider}`,
+                                backgroundColor: theme.palette.background.paper,
+                            })}
+                        >
+                            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                                All day
+                            </Typography>
+                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+                                {allDayItems.map((item) => {
+                                    const colors = getWeekItemColor(item);
+                                    return (
+                                        <Box
+                                            key={item.id}
+                                            onClick={() => openDay(anchorDate)}
+                                            sx={{
+                                                px: 1.25,
+                                                py: 0.8,
+                                                borderRadius: 2,
+                                                border: `1px solid ${colors.border}`,
+                                                backgroundColor: colors.bg,
+                                                color: colors.text,
+                                                cursor: "pointer",
+                                            }}
+                                        >
+                                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                                {item.title}
+                                            </Typography>
+                                        </Box>
+                                    );
+                                })}
+                            </Stack>
+                        </Box>
+                    )}
+
+                    <Box
+                        sx={{
+                            display: "grid",
+                            gridTemplateColumns: "88px minmax(0, 1fr)",
+                            minHeight: rowHeight * hourSlots.length,
+                            maxHeight: 760,
+                            overflow: "auto",
+                        }}
+                    >
+                        <Box
+                            sx={(theme) => ({
+                                borderRight: `1px solid ${theme.palette.divider}`,
+                                backgroundColor: theme.palette.background.default,
+                            })}
+                        >
+                            {hourSlots.map((hour) => (
+                                <Box
+                                    key={hour}
+                                    sx={(theme) => ({
+                                        height: rowHeight,
+                                        px: 1.25,
+                                        pt: 0.55,
+                                        borderBottom: `1px solid ${theme.palette.divider}`,
+                                    })}
+                                >
+                                    <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                        {dayjs().hour(hour).minute(0).format("h A")}
+                                    </Typography>
+                                </Box>
+                            ))}
+                        </Box>
+                        <Box
+                            sx={(theme) => ({
+                                position: "relative",
+                                backgroundColor: theme.palette.background.paper,
+                            })}
+                        >
+                            {hourSlots.map((hour) => (
+                                <Box
+                                    key={hour}
+                                    sx={(theme) => ({
+                                        height: rowHeight,
+                                        borderBottom: `1px solid ${theme.palette.divider}`,
+                                    })}
+                                />
+                            ))}
+
+                            {isToday && (
+                                <Box
+                                    sx={{
+                                        position: "absolute",
+                                        left: 0,
+                                        right: 0,
+                                        top: nowTop,
+                                        height: 2,
+                                        backgroundColor: "primary.main",
+                                        zIndex: 2,
+                                        "&::before": {
+                                            content: '""',
+                                            position: "absolute",
+                                            left: -6,
+                                            top: "50%",
+                                            width: 10,
+                                            height: 10,
+                                            borderRadius: "999px",
+                                            backgroundColor: "primary.main",
+                                            transform: "translateY(-50%)",
+                                        },
+                                    }}
+                                />
+                            )}
+
+                            {timedItems.map((item) => {
+                                const colors = getWeekItemColor(item);
+                                const top = ((item.startMinutes - gridStartMinutes) / 60) * rowHeight;
+                                const height = Math.max(
+                                    ((item.endMinutes - item.startMinutes) / 60) * rowHeight,
+                                    44
+                                );
+
+                                return (
+                                    <Box
+                                        key={item.id}
+                                        onClick={() => openDay(anchorDate)}
+                                        sx={{
+                                            position: "absolute",
+                                            top,
+                                            left: 12,
+                                            right: 12,
+                                            height,
+                                            px: 1.25,
+                                            py: 1,
+                                            borderRadius: 2,
+                                            border: `1px solid ${colors.border}`,
+                                            backgroundColor: colors.bg,
+                                            color: colors.text,
+                                            cursor: "pointer",
+                                            overflow: "hidden",
+                                            zIndex: 1,
+                                        }}
+                                    >
+                                        <Typography variant="body2" sx={{ fontWeight: 700, lineHeight: 1.3 }}>
+                                            {item.title}
+                                        </Typography>
+                                        <Typography variant="body2" sx={{ mt: 0.4 }}>
+                                            {formatItemTime(item)}
+                                        </Typography>
+                                    </Box>
+                                );
+                            })}
+                        </Box>
+                    </Box>
+                </Box>
+
+                <Box
+                    sx={(theme) => ({
+                        borderRadius: 4,
+                        border: `1px solid ${theme.palette.divider}`,
+                        overflow: "hidden",
+                        backgroundColor: theme.palette.background.paper,
+                    })}
+                >
+                    <Box
+                        sx={(theme) => ({
+                            p: 1.25,
+                            borderBottom: `1px solid ${theme.palette.divider}`,
+                            backgroundColor: alpha(
+                                theme.palette.background.paper,
+                                theme.palette.mode === "dark" ? 0.9 : 0.78
+                            ),
+                        })}
+                    >
+                        {renderDateCalendar(anchorDate)}
+                    </Box>
+                    <Box sx={{ p: 2 }}>
+                        {selectedDetailItem ? (
+                            <Stack spacing={2}>
+                                <Box>
+                                    <Typography variant="h6">{selectedDetailItem.title}</Typography>
+                                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                                        {selectedDetailItem.description || "No extra notes for this item."}
+                                    </Typography>
+                                </Box>
+                                <Stack spacing={1}>
+                                    <Typography variant="body2" color="text.secondary">
+                                        {formatDateOnly(dayKey)}
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                        {formatItemTime(selectedDetailItem)}
+                                    </Typography>
+                                    {selectedDetailItem.project_name && (
+                                        <Typography variant="body2" color="text.secondary">
+                                            Project: {selectedDetailItem.project_name}
+                                        </Typography>
+                                    )}
+                                    {selectedDetailItem.priority && (
+                                        <Typography variant="body2" color="text.secondary">
+                                            Priority: {humanizeKey(selectedDetailItem.priority)}
+                                        </Typography>
+                                    )}
+                                </Stack>
+                                <Button variant="outlined" onClick={() => openDay(anchorDate)}>
+                                    Edit or add item
+                                </Button>
+                            </Stack>
+                        ) : (
+                            <DayItems
+                                items={dayItems}
+                                emptyTitle="Nothing scheduled for this day"
+                                emptyDescription="Use Add item to create an event, appointment, or task."
+                            />
+                        )}
+                    </Box>
+                </Box>
+            </Box>
+        );
+    }
+
+    function renderWeekView() {
+        const weekDays = Array.from({ length: 7 }, (_, index) =>
+            anchorDate.startOf("week").add(index, "day")
+        );
+        const hourSlots = Array.from({ length: 10 }, (_, index) => 9 + index);
+        const rowHeight = 88;
+        const dayColumnWidth = 194;
+
+        const timedWeekItems = weekDays.map((day) => {
+            const dateKey = day.format("YYYY-MM-DD");
+            return (itemsByDate[dateKey] ?? [])
+                .filter((item) => item.start_time)
+                .map((item) => {
+                    const startMinutes = getMinutesFromTimeString(item.start_time ?? "09:00");
+                    const endMinutes = item.end_time
+                        ? getMinutesFromTimeString(item.end_time)
+                        : startMinutes + 60;
+                    const clampedStart = Math.max(9 * 60, startMinutes);
+                    const clampedEnd = Math.max(clampedStart + 30, endMinutes);
+
+                    return {
+                        ...item,
+                        top: ((clampedStart - 9 * 60) / 60) * rowHeight,
+                        height: Math.max(((clampedEnd - clampedStart) / 60) * rowHeight, 44),
+                    };
+                });
+        });
+
+        const allDayWeekItems = weekDays.map((day) => {
+            const dateKey = day.format("YYYY-MM-DD");
+            return (itemsByDate[dateKey] ?? []).filter((item) => !item.start_time);
+        });
+
+        return (
+            <Box
+                sx={(theme) => ({
+                    borderRadius: 4,
+                    border: `1px solid ${theme.palette.divider}`,
+                    overflow: "hidden",
+                    backgroundColor: theme.palette.background.paper,
+                })}
+            >
+                <Box
+                    sx={{
+                        display: "grid",
+                        gridTemplateColumns: `88px repeat(7, minmax(${dayColumnWidth}px, 1fr))`,
+                        minWidth: 980,
+                    }}
+                >
+                    <Box
+                        sx={(theme) => ({
+                            borderRight: `1px solid ${theme.palette.divider}`,
+                            borderBottom: `1px solid ${theme.palette.divider}`,
+                            backgroundColor: theme.palette.background.default,
+                        })}
+                    />
+                    {weekDays.map((day) => {
+                        const isToday = day.isSame(dayjs(), "day");
+                        return (
+                            <Box
+                                key={day.format("YYYY-MM-DD")}
+                                sx={(theme) => ({
+                                    minHeight: 88,
+                                    px: 2,
+                                    py: 1.5,
+                                    borderRight: `1px solid ${theme.palette.divider}`,
+                                    borderBottom: `1px solid ${theme.palette.divider}`,
+                                    backgroundColor: theme.palette.background.default,
+                                    display: "flex",
+                                    alignItems: "flex-start",
+                                    justifyContent: "center",
+                                })}
+                            >
+                                <Stack direction="row" spacing={1} alignItems="center">
+                                    <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                                        {day.format("ddd D")}
+                                    </Typography>
+                                    {isToday && (
+                                        <Box
+                                            sx={(theme) => ({
+                                                width: 32,
+                                                height: 32,
+                                                borderRadius: "999px",
+                                                display: "grid",
+                                                placeItems: "center",
+                                                backgroundColor: theme.palette.primary.main,
+                                                color: theme.palette.primary.contrastText,
+                                                fontSize: 14,
+                                                fontWeight: 700,
+                                            })}
+                                        >
+                                            {day.format("D")}
+                                        </Box>
+                                    )}
+                                </Stack>
+                            </Box>
+                        );
+                    })}
+
+                    <Box
+                        sx={(theme) => ({
+                            minHeight: 64,
+                            px: 1.5,
+                            py: 1,
+                            borderRight: `1px solid ${theme.palette.divider}`,
+                            borderBottom: `1px solid ${theme.palette.divider}`,
+                            backgroundColor: theme.palette.background.default,
+                        })}
+                    >
+                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                            All day
+                        </Typography>
+                    </Box>
+                    {weekDays.map((day, dayIndex) => {
+                        const allDayItems = allDayWeekItems[dayIndex];
+                        return (
+                            <Box
+                                key={`${day.format("YYYY-MM-DD")}-all-day`}
+                                sx={(theme) => ({
+                                    minHeight: 64,
+                                    p: 1,
+                                    borderRight: `1px solid ${theme.palette.divider}`,
+                                    borderBottom: `1px solid ${theme.palette.divider}`,
+                                    backgroundColor: theme.palette.background.paper,
+                                })}
+                            >
+                                <Stack spacing={0.75}>
+                                    {allDayItems.slice(0, 2).map((item) => {
+                                        const colors = getWeekItemColor(item);
+                                        return (
+                                            <Box
+                                                key={item.id}
+                                                onClick={() => openDay(day)}
+                                                sx={{
+                                                    px: 1.25,
+                                                    py: 0.75,
+                                                    borderRadius: 2,
+                                                    border: `1px solid ${colors.border}`,
+                                                    backgroundColor: colors.bg,
+                                                    color: colors.text,
+                                                    cursor: "pointer",
+                                                }}
+                                            >
+                                                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                                    {item.title}
+                                                </Typography>
+                                            </Box>
+                                        );
+                                    })}
+                                    {allDayItems.length > 2 && (
+                                        <Typography variant="caption" color="text.secondary">
+                                            +{allDayItems.length - 2} more
+                                        </Typography>
+                                    )}
+                                </Stack>
+                            </Box>
+                        );
+                    })}
+
+                    <Box
+                        sx={(theme) => ({
+                            position: "relative",
+                            borderRight: `1px solid ${theme.palette.divider}`,
+                            backgroundColor: theme.palette.background.default,
+                        })}
+                    >
+                        {hourSlots.map((hour) => (
+                            <Box
+                                key={hour}
+                                sx={(theme) => ({
+                                    height: rowHeight,
+                                    px: 1.25,
+                                    pt: 0.8,
+                                    borderBottom: `1px solid ${theme.palette.divider}`,
+                                })}
+                            >
+                                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                    {dayjs().hour(hour).minute(0).format("h A")}
+                                </Typography>
+                            </Box>
+                        ))}
+                    </Box>
+                    {weekDays.map((day, dayIndex) => (
+                        <Box
+                            key={`${day.format("YYYY-MM-DD")}-grid`}
+                            sx={(theme) => ({
+                                position: "relative",
+                                height: rowHeight * hourSlots.length,
+                                borderRight: `1px solid ${theme.palette.divider}`,
+                                backgroundColor: theme.palette.background.paper,
+                            })}
+                        >
+                            {hourSlots.map((hour) => (
+                                <Box
+                                    key={hour}
+                                    sx={(theme) => ({
+                                        height: rowHeight,
+                                        borderBottom: `1px solid ${theme.palette.divider}`,
+                                    })}
+                                />
+                            ))}
+                            {timedWeekItems[dayIndex].map((item) => {
+                                const colors = getWeekItemColor(item);
+                                return (
+                                    <Box
+                                        key={item.id}
+                                        onClick={() => openDay(day)}
+                                        sx={{
+                                            position: "absolute",
+                                            top: item.top,
+                                            left: 8,
+                                            right: 8,
+                                            height: item.height,
+                                            px: 1.25,
+                                            py: 1,
+                                            borderRadius: 2,
+                                            border: `1px solid ${colors.border}`,
+                                            backgroundColor: colors.bg,
+                                            color: colors.text,
+                                            cursor: "pointer",
+                                            overflow: "hidden",
+                                        }}
+                                    >
+                                        <Typography variant="body2" sx={{ fontWeight: 700, lineHeight: 1.3 }}>
+                                            {item.title}
+                                        </Typography>
+                                        <Typography variant="body2" sx={{ mt: 0.4 }}>
+                                            {formatTimeValue(item.start_time ?? "09:00")}
+                                        </Typography>
+                                    </Box>
+                                );
+                            })}
+                        </Box>
+                    ))}
+                </Box>
+            </Box>
+        );
+    }
+
+    function renderMonthViews() {
+        return (
+            <Box
+                sx={{
+                    display: "grid",
+                    gap: 1.5,
+                    gridTemplateColumns: getMonthGridColumns(viewMode),
+                }}
+            >
+                {visibleMonths.map((month) => (
+                    <Box
+                        key={month.format("YYYY-MM")}
+                        sx={(theme) => ({
+                            borderRadius: 4,
+                            border: `1px solid ${theme.palette.divider}`,
+                            p: 1.25,
+                            backgroundColor: alpha(
+                                theme.palette.background.paper,
+                                theme.palette.mode === "dark" ? 0.9 : 0.78
+                            ),
+                        })}
+                    >
+                        {renderDateCalendar(month)}
+                    </Box>
+                ))}
+            </Box>
+        );
+    }
+
     return (
         <>
             <SectionCard
                 title="Workspace calendar"
-                description="Scan the next month, quarter, half-year, or year and add work directly from any day."
+                description="Switch between focused day planning, weekly scheduling, monthly scanning, and a 12-month horizon."
                 action={
                     <Stack spacing={1} alignItems={{ xs: "stretch", sm: "flex-end" }}>
-                        {allowedMonthSpans.length > 1 && (
+                        {allowedViews.length > 1 && (
                             <Stack
                                 direction="row"
                                 spacing={0.75}
@@ -332,14 +1062,14 @@ export function DashboardCalendar({
                                 useFlexGap
                                 justifyContent="flex-end"
                             >
-                                {allowedMonthSpans.map((option) => (
+                                {VIEW_OPTIONS.filter((option) => allowedViews.includes(option.value)).map((option) => (
                                     <Button
-                                        key={option}
+                                        key={option.value}
                                         size="small"
-                                        variant={monthSpan === option ? "contained" : "outlined"}
-                                        onClick={() => setMonthSpan(option)}
+                                        variant={viewMode === option.value ? "contained" : "outlined"}
+                                        onClick={() => setViewMode(option.value)}
                                     >
-                                        {option}M
+                                        {option.label}
                                     </Button>
                                 ))}
                             </Stack>
@@ -349,7 +1079,9 @@ export function DashboardCalendar({
                                 size="small"
                                 variant="text"
                                 startIcon={<ChevronLeftIcon />}
-                                onClick={() => setMonthOffset((current) => current - monthSpan)}
+                                onClick={() =>
+                                    setAnchorDate((current) => shiftAnchorDate(current, viewMode, -1))
+                                }
                             >
                                 Back
                             </Button>
@@ -357,7 +1089,9 @@ export function DashboardCalendar({
                                 size="small"
                                 variant="text"
                                 endIcon={<ChevronRightIcon />}
-                                onClick={() => setMonthOffset((current) => current + monthSpan)}
+                                onClick={() =>
+                                    setAnchorDate((current) => shiftAnchorDate(current, viewMode, 1))
+                                }
                             >
                                 Forward
                             </Button>
@@ -372,92 +1106,35 @@ export function DashboardCalendar({
                 )}
 
                 {isLoading ? (
-                    <Box
-                        sx={{
-                            display: "grid",
-                            gap: 1.5,
-                            gridTemplateColumns: getCalendarColumns(monthSpan),
-                        }}
-                    >
-                        {visibleMonths.map((month) => (
-                            <Skeleton
-                                key={month.format("YYYY-MM")}
-                                variant="rounded"
-                                height={monthSpan >= 6 ? 360 : 420}
-                                sx={{ borderRadius: 4 }}
-                            />
-                        ))}
-                    </Box>
-                ) : (
-                    <Box
-                        sx={{
-                            display: "grid",
-                            gap: 1.5,
-                            gridTemplateColumns: getCalendarColumns(monthSpan),
-                        }}
-                    >
-                        {visibleMonths.map((month) => (
-                            <Box
-                                key={month.format("YYYY-MM")}
-                                sx={(theme) => ({
-                                    borderRadius: 4,
-                                    border: `1px solid ${theme.palette.divider}`,
-                                    p: 1.25,
-                                    backgroundColor: alpha(
-                                        theme.palette.background.paper,
-                                        theme.palette.mode === "dark" ? 0.9 : 0.78
-                                    ),
-                                })}
-                            >
-                                <DateCalendar
-                                    value={selectedDate?.isSame(month, "month") ? selectedDate : null}
-                                    onChange={(newValue) => {
-                                        if (newValue) {
-                                            openDay(newValue);
-                                        }
-                                    }}
-                                    referenceDate={month}
-                                    views={["day"]}
-                                    showDaysOutsideCurrentMonth
-                                    fixedWeekNumber={6}
-                                    reduceAnimations
-                                    slots={{ day: CalendarDay }}
-                                    sx={{
-                                        width: "100%",
-                                        maxWidth: "none",
-                                        m: 0,
-                                        "& .MuiPickersCalendarHeader-root": {
-                                            px: 1,
-                                            mb: 0.5,
-                                        },
-                                        "& .MuiPickersCalendarHeader-switchViewButton": {
-                                            display: "none",
-                                        },
-                                        "& .MuiPickersArrowSwitcher-root": {
-                                            display: "none",
-                                        },
-                                        "& .MuiPickersCalendarHeader-label": {
-                                            fontSize: "1rem",
-                                            fontWeight: 700,
-                                        },
-                                        "& .MuiDayCalendar-header": {
-                                            justifyContent: "space-between",
-                                            px: 0.75,
-                                        },
-                                        "& .MuiDayCalendar-weekDayLabel": {
-                                            width: daySize,
-                                            color: "text.secondary",
-                                            fontWeight: 700,
-                                        },
-                                        "& .MuiDayCalendar-weekContainer": {
-                                            justifyContent: "space-between",
-                                            mt: 0.5,
-                                        },
-                                    }}
+                    viewMode === "day" || viewMode === "week" ? (
+                        <Stack spacing={2}>
+                            <Skeleton variant="rounded" height={340} sx={{ borderRadius: 4 }} />
+                            <Skeleton variant="rounded" height={220} sx={{ borderRadius: 4 }} />
+                        </Stack>
+                    ) : (
+                        <Box
+                            sx={{
+                                display: "grid",
+                                gap: 1.5,
+                                gridTemplateColumns: getMonthGridColumns(viewMode),
+                            }}
+                        >
+                            {visibleMonths.map((month) => (
+                                <Skeleton
+                                    key={month.format("YYYY-MM")}
+                                    variant="rounded"
+                                    height={viewMode === "twelve_month" ? 360 : 420}
+                                    sx={{ borderRadius: 4 }}
                                 />
-                            </Box>
-                        ))}
-                    </Box>
+                            ))}
+                        </Box>
+                    )
+                ) : viewMode === "day" ? (
+                    renderDayView()
+                ) : viewMode === "week" ? (
+                    renderWeekView()
+                ) : (
+                    renderMonthViews()
                 )}
             </SectionCard>
 
@@ -488,62 +1165,11 @@ export function DashboardCalendar({
                         <Typography variant="subtitle2" sx={{ mb: 1 }}>
                             Day agenda
                         </Typography>
-                        {selectedDateItems.length === 0 ? (
-                            <EmptyState
-                                icon={<EventIcon />}
-                                title="Nothing scheduled yet"
-                                description="Pick a type below and add the first calendar item for this day."
-                            />
-                        ) : (
-                            <Stack spacing={1}>
-                                {selectedDateItems.map((item) => (
-                                    <Box
-                                        key={item.id}
-                                        sx={(theme) => ({
-                                            borderRadius: 3,
-                                            border: `1px solid ${theme.palette.divider}`,
-                                            p: 1.5,
-                                            backgroundColor:
-                                                item.type === "task"
-                                                    ? alpha(
-                                                          theme.palette.success.main,
-                                                          theme.palette.mode === "dark" ? 0.16 : 0.08
-                                                      )
-                                                    : theme.palette.background.paper,
-                                        })}
-                                    >
-                                        <Stack spacing={0.75}>
-                                            <Stack direction="row" spacing={1} alignItems="center">
-                                                {getItemIcon(item.type)}
-                                                <Typography variant="subtitle2">{item.title}</Typography>
-                                            </Stack>
-                                            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-                                                <Chip label={humanizeKey(item.type)} size="small" variant="outlined" />
-                                                <Chip label={formatItemTime(item)} size="small" variant="outlined" />
-                                                {item.project_name && (
-                                                    <Chip label={item.project_name} size="small" variant="outlined" />
-                                                )}
-                                                {item.status && (
-                                                    <Chip label={humanizeKey(item.status)} size="small" variant="outlined" />
-                                                )}
-                                                {item.priority && (
-                                                    <Chip
-                                                        label={`${humanizeKey(item.priority)} priority`}
-                                                        size="small"
-                                                        variant="outlined"
-                                                    />
-                                                )}
-                                            </Stack>
-                                            {item.description && (
-                                                <Typography variant="body2" color="text.secondary">
-                                                    {item.description}
-                                                </Typography>
-                                            )}
-                                        </Stack>
-                                    </Box>
-                                ))}
-                            </Stack>
-                        )}
+                        <DayItems
+                            items={selectedDateKey ? itemsByDate[selectedDateKey] ?? [] : []}
+                            emptyTitle="Nothing scheduled yet"
+                            emptyDescription="Pick a type below and add the first calendar item for this day."
+                        />
                     </Box>
 
                     <Divider />
