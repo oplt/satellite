@@ -7,6 +7,7 @@ import { useAuth } from "../hooks/useAuth";
 import AuthHomePage from "../pages/AuthHomePage";
 
 const DashboardPage = lazy(() => import("../pages/DashboardPage"));
+const CopernicusPage = lazy(() => import("../pages/CopernicusPage"));
 const CalendarPage = lazy(() => import("../pages/CalendarPage"));
 const ProjectsPage = lazy(() => import("../pages/ProjectsPage"));
 const ProjectDetailPage = lazy(() => import("../pages/ProjectDetailPage"));
@@ -57,6 +58,7 @@ export function AppRouter() {
                     }
                 >
                     <Route path="/dashboard" element={<SuspensePage><DashboardPage /></SuspensePage>} />
+                    <Route path="/copernicus" element={<SuspensePage><CopernicusPage /></SuspensePage>} />
                     <Route path="/calendar" element={<SuspensePage><CalendarPage /></SuspensePage>} />
                     <Route path="/projects" element={<SuspensePage><ProjectsPage /></SuspensePage>} />
                     <Route path="/projects/:projectId" element={<SuspensePage><ProjectDetailPage /></SuspensePage>} />

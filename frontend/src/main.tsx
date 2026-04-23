@@ -10,6 +10,15 @@ import "./index.css";
 import { AppProviders } from "./app/providers";
 import { AppRouter } from "./app/router";
 
+if (import.meta.env.DEV && "serviceWorker" in navigator) {
+    navigator.serviceWorker
+        .getRegistrations()
+        .then((registrations) =>
+            Promise.all(registrations.map((registration) => registration.unregister()))
+        )
+        .catch(() => undefined);
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
     <React.StrictMode>
         <AppProviders>

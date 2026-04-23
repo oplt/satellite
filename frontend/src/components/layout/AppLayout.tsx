@@ -34,6 +34,7 @@ import {
     Menu as MenuIcon,
     Notifications as NotificationsIcon,
     Person as ProfileIcon,
+    SatelliteAlt as SatelliteIcon,
     Settings as SettingsIcon,
     SettingsBrightness as SystemModeIcon,
 } from "@mui/icons-material";
@@ -199,6 +200,7 @@ export function AppLayout() {
     const navItems = useMemo<NavItem[]>(
         () => [
             { label: "Dashboard", icon: <DashboardIcon />, path: "/dashboard", group: "workspace" },
+            { label: "Copernicus", icon: <SatelliteIcon />, path: "/copernicus", group: "workspace" },
             { label: "Calendar", icon: <CalendarIcon />, path: "/calendar", group: "workspace" },
             { label: coreDomainPlural, icon: <ProjectsIcon />, path: "/projects", group: "workspace" },
             ...(hasUserPlatformModule

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { forwardRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -32,12 +32,13 @@ import { usePlatformMetadata } from "../hooks/usePlatformMetadata";
 
 type Mode = "signIn" | "signUp";
 
-function PasswordField(props: TextFieldProps) {
+const PasswordField = forwardRef<HTMLDivElement, TextFieldProps>(function PasswordField(props, ref) {
     const [showPassword, setShowPassword] = useState(false);
 
     return (
         <TextField
             {...props}
+            ref={ref}
             type={showPassword ? "text" : "password"}
             InputProps={{
                 endAdornment: (
@@ -55,7 +56,7 @@ function PasswordField(props: TextFieldProps) {
             }}
         />
     );
-}
+});
 
 function SignInForm({ onSuccess }: { onSuccess: () => void }) {
     const navigate = useNavigate();

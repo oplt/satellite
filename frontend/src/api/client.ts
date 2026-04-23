@@ -1,6 +1,42 @@
 import { authStore } from "../features/auth/store/authStore";
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000/api/v1";
+const DEFAULT_API_BASE = "http://localhost:8000/api/v1";
+
+export function normalizeApiBase(base: string | undefined): string {
+    if (!base) {
+        return DEFAULT_API_BASE;
+    }
+
+    const trimmed = base.trim().replace(/\/+$/, "");
+
+    if (!trimmed) {
+        return DEFAULT_API_BASE;
+    }
+
+    if (/\/api\/v1$/i.test(trimmed)) {
+        return trimmed;
+    }
+
+    if (/\/api$/i.test(trimmed)) {
+        return `${trimmed}/v1`;
+    }
+
+    try {
+        const url = new URL(trimmed);
+        const normalizedPath = url.pathname.replace(/\/+$/, "");
+
+        if (!normalizedPath || normalizedPath === "/") {
+            url.pathname = "/api/v1";
+            return url.toString().replace(/\/$/, "");
+        }
+    } catch {
+        return trimmed;
+    }
+
+    return trimmed;
+}
+
+export const API_BASE = normalizeApiBase(import.meta.env.VITE_API_BASE);
 
 let refreshPromise: Promise<string | null> | null = null;
 
@@ -24,6 +60,35 @@ export async function apiFetch<T>(
     options: RequestInit = {},
     retry = true
 ): Promise<T> {
+    const response = await fetchWithAuth(path, options, retry);
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: "Request failed" }));
+        throw new Error(error.detail ?? "Request failed");
+    }
+
+    if (response.status === 204) return undefined as T;
+
+    return response.json();
+}
+
+function resolveRequestUrl(path: string): string {
+    if (/^https?:\/\//.test(path)) {
+        return path;
+    }
+
+    if (path.startsWith("/")) {
+        return `${API_BASE}${path}`;
+    }
+
+    return `${API_BASE}${path}`;
+}
+
+export async function fetchWithAuth(
+    path: string,
+    options: RequestInit = {},
+    retry = true
+): Promise<Response> {
     const headers = new Headers(options.headers ?? {});
     const isFormData = options.body instanceof FormData;
 
@@ -35,7 +100,7 @@ export async function apiFetch<T>(
         headers.set("Authorization", `Bearer ${authStore.accessToken}`);
     }
 
-    const response = await fetch(`${API_BASE}${path}`, {
+    const response = await fetch(resolveRequestUrl(path), {
         ...options,
         headers,
         credentials: "include",
@@ -52,16 +117,8 @@ export async function apiFetch<T>(
         if (!newToken) {
             throw new Error("Session expired. Please sign in again.");
         }
-        return apiFetch<T>(path, options, false);
+        return fetchWithAuth(path, options, false);
     }
 
-    if (!response.ok) {
-        const error = await response.json().catch(() => ({ detail: "Request failed" }));
-        throw new Error(error.detail ?? "Request failed");
-    }
-
-    // Handle 204 No Content
-    if (response.status === 204) return undefined as T;
-
-    return response.json();
+    return response;
 }
