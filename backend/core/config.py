@@ -71,6 +71,21 @@ class Settings(BaseSettings):
     STORAGE_PUBLIC_READ: bool = True
     STORAGE_AVATAR_MAX_BYTES: int = 5 * 1024 * 1024
 
+    COPERNICUS_CLIENT_ID: str = ""
+    COPERNICUS_CLIENT_SECRET: str = ""
+    COPERNICUS_TOKEN_URL: str = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
+    COPERNICUS_CATALOG_URL: str = "https://sh.dataspace.copernicus.eu/api/v1/catalog/1.0.0/search"
+    COPERNICUS_PROCESS_URL: str = "https://sh.dataspace.copernicus.eu/api/v1/process"
+    COPERNICUS_DEFAULT_COLLECTION: str = "sentinel-2-l2a"
+    COPERNICUS_DEFAULT_COUNTRY: str = "BE"
+    COPERNICUS_DEFAULT_CLOUD_THRESHOLD: int = 25
+    COPERNICUS_HTTP_TIMEOUT_SECONDS: float = 45.0
+    COPERNICUS_TOKEN_SAFETY_MARGIN_SECONDS: int = 60
+    COPERNICUS_SEARCH_CACHE_TTL_SECONDS: int = 900
+    COPERNICUS_RENDER_CACHE_TTL_SECONDS: int = 1800
+    COPERNICUS_ASSET_CACHE_TTL_SECONDS: int = 1800
+    COPERNICUS_CACHE_BBOX_PRECISION: int = 4
+
     @property
     def celery_broker_url(self) -> str:
         return self.CELERY_BROKER_URL or self.REDIS_URL

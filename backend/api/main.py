@@ -14,6 +14,7 @@ from backend.core.logging import setup_logging
 from backend.core.storage import object_storage
 from backend.core.telemetry import setup_telemetry
 from backend.db.session import SessionLocal, engine
+from backend.modules.copernicus.router import compat_router as satellite_compat_router
 from backend.modules.platform.service import PlatformService
 
 setup_logging()
@@ -50,4 +51,5 @@ app.add_middleware(
 
 register_exception_handlers(app)
 app.include_router(api_router)
+app.include_router(satellite_compat_router)
 app.include_router(health_router)

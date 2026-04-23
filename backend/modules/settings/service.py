@@ -62,6 +62,20 @@ CONFIG_FIELD_METADATA: dict[str, dict[str, Any]] = {
     "STORAGE_AUTO_CREATE_BUCKET": {"description": "Create the storage bucket automatically on startup.", "requires_restart": True},
     "STORAGE_PUBLIC_READ": {"description": "Apply a public-read policy to the storage bucket.", "requires_restart": True},
     "STORAGE_AVATAR_MAX_BYTES": {"description": "Maximum avatar upload size in bytes.", "requires_restart": False},
+    "COPERNICUS_CLIENT_ID": {"description": "Copernicus Data Space OAuth client id.", "requires_restart": False},
+    "COPERNICUS_CLIENT_SECRET": {"description": "Copernicus Data Space OAuth client secret.", "requires_restart": False},
+    "COPERNICUS_TOKEN_URL": {"description": "OAuth token endpoint used for Copernicus access tokens.", "requires_restart": False},
+    "COPERNICUS_CATALOG_URL": {"description": "Copernicus STAC catalog search endpoint.", "requires_restart": False},
+    "COPERNICUS_PROCESS_URL": {"description": "Copernicus Process API endpoint used to render imagery.", "requires_restart": False},
+    "COPERNICUS_DEFAULT_COLLECTION": {"description": "Default Copernicus collection used by the satellite module.", "requires_restart": False},
+    "COPERNICUS_DEFAULT_COUNTRY": {"description": "Default market/country code used by the national satellite dashboard.", "requires_restart": False},
+    "COPERNICUS_DEFAULT_CLOUD_THRESHOLD": {"description": "Default cloud-cover threshold applied to catalog searches.", "requires_restart": False},
+    "COPERNICUS_HTTP_TIMEOUT_SECONDS": {"description": "Request timeout for outbound Copernicus HTTP calls.", "requires_restart": False},
+    "COPERNICUS_TOKEN_SAFETY_MARGIN_SECONDS": {"description": "Safety margin subtracted from Copernicus token expiry before caching.", "requires_restart": False},
+    "COPERNICUS_SEARCH_CACHE_TTL_SECONDS": {"description": "TTL for cached Copernicus catalog search results.", "requires_restart": False},
+    "COPERNICUS_RENDER_CACHE_TTL_SECONDS": {"description": "TTL for cached Copernicus render metadata.", "requires_restart": False},
+    "COPERNICUS_ASSET_CACHE_TTL_SECONDS": {"description": "TTL for cached rendered image assets.", "requires_restart": False},
+    "COPERNICUS_CACHE_BBOX_PRECISION": {"description": "Decimal precision used to normalize bbox values in cache keys.", "requires_restart": False},
 }
 
 TYPE_LABELS = {

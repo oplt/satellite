@@ -8,6 +8,7 @@ from backend.modules.platform.router import router as platform_router
 from backend.modules.profile.router import router as profile_router
 from backend.modules.projects.router import router as projects_router
 from backend.modules.settings.router import router as settings_router
+from backend.modules.copernicus.router import router as satellite_router
 from backend.modules.users.router import router as users_router
 
 api_router = APIRouter(prefix="/api/v1")
@@ -20,4 +21,5 @@ api_router.include_router(projects_router, prefix="/projects", tags=["projects"]
 api_router.include_router(notifications_router, prefix="/notifications", tags=["notifications"])
 api_router.include_router(platform_router, prefix="/platform", tags=["platform"])
 api_router.include_router(settings_router, prefix="/settings", tags=["settings"])
+api_router.include_router(satellite_router, prefix="/satellite", tags=["satellite"])
 api_router.include_router(admin_router, prefix="/admin", tags=["admin"])
