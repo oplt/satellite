@@ -7,8 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.core.config import ENV_FILE, Settings, settings
 from backend.modules.settings.models import AppSetting
 from backend.modules.settings.repository import SettingsRepository
-from backend.modules.settings.schemas import ConfigEntryResponse, ConfigEntryUpdate, ConfigSettingsResponse
-
+from backend.modules.settings.schemas import (
+    ConfigEntryResponse,
+    ConfigEntryUpdate,
+    ConfigSettingsResponse,
+)
 
 CONFIG_NOTICE = (
     "Config values are saved to backend/.env. Values read directly from `settings` update immediately, "

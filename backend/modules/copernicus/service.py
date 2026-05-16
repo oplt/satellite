@@ -9,17 +9,18 @@ import httpx
 from fastapi import HTTPException
 
 from backend.core.config import settings
+from backend.core.storage import ObjectStorage, ObjectStorageError, object_storage
 from backend.modules.copernicus.builder import (
     build_catalog_search_payload,
     build_process_payload,
 )
 from backend.modules.copernicus.models import (
+    SUPPORTED_COLLECTIONS,
     AuthTokenRecord,
     RenderCacheRecord,
     SatelliteLayerMode,
     SceneRecord,
     StoredAsset,
-    SUPPORTED_COLLECTIONS,
 )
 from backend.modules.copernicus.repository import (
     CopernicusRepository,
@@ -41,7 +42,6 @@ from backend.modules.copernicus.schemas import (
     SceneMetadataResponse,
 )
 
-
 logger = logging.getLogger(__name__)
 RENDER_PROFILE = "mercator-v1"
 
@@ -50,8 +50,10 @@ class CopernicusService:
     def __init__(
         self,
         repository: CopernicusRepository | None = None,
+        storage: ObjectStorage | None = None,
     ) -> None:
         self.repository = repository or copernicus_repository
+        self.storage = storage or object_storage
         self.timeout = httpx.Timeout(
             timeout=settings.COPERNICUS_HTTP_TIMEOUT_SECONDS,
             connect=min(10.0, settings.COPERNICUS_HTTP_TIMEOUT_SECONDS),
@@ -90,7 +92,7 @@ class CopernicusService:
         )
 
     async def get_asset(self, asset_id: str) -> StoredAsset:
-        asset = await self.repository.get_asset(asset_id)
+        asset = await self._get_cached_asset(asset_id)
         if asset is None:
             raise HTTPException(status_code=404, detail="Satellite asset not found or expired")
         return asset
@@ -206,9 +208,10 @@ class CopernicusService:
             render_profile=RENDER_PROFILE,
         )
 
+        asset_id = build_asset_id(render_key)
         cached_render = await self.repository.get_render(render_key)
         if cached_render is not None:
-            cached_asset = await self.repository.get_asset(cached_render.asset_id)
+            cached_asset = await self._get_cached_asset(cached_render.asset_id)
             if cached_asset is not None:
                 render_hit = True
                 asset_hit = True
@@ -219,8 +222,8 @@ class CopernicusService:
                     scene=self._scene_to_response(scene),
                     image=ImageAssetResponse(
                         asset_id=cached_render.asset_id,
-                        content_type=cached_render.content_type,
-                        size_bytes=cached_render.byte_size,
+                        content_type=cached_asset.content_type,
+                        size_bytes=cached_asset.byte_size,
                         data_url=self._to_data_url(
                             cached_asset.content_type,
                             cached_asset.content,
@@ -236,6 +239,49 @@ class CopernicusService:
                         render_key=render_key,
                     ),
                 )
+
+        cached_asset = await self._get_cached_asset(asset_id)
+        if cached_asset is not None:
+            render_hit = True
+            asset_hit = True
+            await self.repository.set_render(
+                render_key,
+                RenderCacheRecord(
+                    asset_id=asset_id,
+                    content_type=cached_asset.content_type,
+                    byte_size=cached_asset.byte_size,
+                    bbox=bbox.as_tuple(),
+                    collection=collection,
+                    layer=layer,
+                    scene=scene,
+                    created_at=datetime.now(UTC),
+                ),
+                settings.COPERNICUS_RENDER_CACHE_TTL_SECONDS,
+            )
+            return RenderImageResponse(
+                bbox=bbox,
+                collection=collection,
+                layer=layer,
+                scene=self._scene_to_response(scene),
+                image=ImageAssetResponse(
+                    asset_id=asset_id,
+                    content_type=cached_asset.content_type,
+                    size_bytes=cached_asset.byte_size,
+                    data_url=self._to_data_url(
+                        cached_asset.content_type,
+                        cached_asset.content,
+                    ),
+                ),
+                cache=CacheMetadataResponse(
+                    backend=self.repository.backend,
+                    search_hit=search_hit,
+                    render_hit=render_hit,
+                    asset_hit=asset_hit,
+                    token_hit=token_hit,
+                    search_key=search_key,
+                    render_key=render_key,
+                ),
+            )
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             if token is None:
@@ -253,7 +299,6 @@ class CopernicusService:
             )
             image_bytes, content_type = await self._fetch_rendered_image(client, token, process_payload)
 
-        asset_id = build_asset_id(render_key)
         asset = StoredAsset(
             asset_id=asset_id,
             content_type=content_type,
@@ -266,6 +311,7 @@ class CopernicusService:
             asset,
             settings.COPERNICUS_ASSET_CACHE_TTL_SECONDS,
         )
+        await self._store_asset(asset)
         await self.repository.set_render(
             render_key,
             RenderCacheRecord(
@@ -302,6 +348,58 @@ class CopernicusService:
                 render_key=render_key,
             ),
         )
+
+    async def _get_cached_asset(self, asset_id: str) -> StoredAsset | None:
+        asset = await self.repository.get_asset(asset_id)
+        if asset is not None:
+            return asset
+
+        if not self.storage.is_configured:
+            return None
+
+        try:
+            downloaded = await self.storage.download_bytes(self._asset_object_key(asset_id))
+        except ObjectStorageError:
+            logger.exception("Failed to read Copernicus asset %s from object storage", asset_id)
+            return None
+
+        if downloaded is None:
+            return None
+
+        content, content_type = downloaded
+        asset = StoredAsset(
+            asset_id=asset_id,
+            content_type=content_type,
+            content=content,
+            byte_size=len(content),
+            created_at=datetime.now(UTC),
+        )
+        await self.repository.set_asset(
+            asset_id,
+            asset,
+            settings.COPERNICUS_ASSET_CACHE_TTL_SECONDS,
+        )
+        return asset
+
+    async def _store_asset(self, asset: StoredAsset) -> None:
+        if not self.storage.is_configured:
+            return
+
+        try:
+            await self.storage.upload_bytes(
+                object_key=self._asset_object_key(asset.asset_id),
+                body=asset.content,
+                content_type=asset.content_type,
+            )
+        except ObjectStorageError:
+            logger.exception(
+                "Failed to write Copernicus asset %s to object storage",
+                asset.asset_id,
+            )
+
+    @staticmethod
+    def _asset_object_key(asset_id: str) -> str:
+        return f"copernicus/rendered/{asset_id}.png"
 
     def _validate_collection(self, collection: str) -> None:
         if collection not in SUPPORTED_COLLECTIONS:

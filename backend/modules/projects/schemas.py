@@ -3,7 +3,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
 TaskStatus = Literal["backlog", "todo", "in_progress", "review", "done"]
 TaskPriority = Literal["low", "medium", "high", "urgent"]
 

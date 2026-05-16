@@ -103,6 +103,8 @@ export interface RasterOverlayLayer {
     opacity: number;
     visible: boolean;
     blendMode?: "normal" | "multiply" | "screen";
+    maxNativeZoom?: number;
+    maxZoom?: number;
 }
 
 export interface AIDetectionOverlay {

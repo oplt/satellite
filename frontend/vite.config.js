@@ -39,12 +39,29 @@ export default defineConfig({
     build: {
         rollupOptions: {
             output: {
-                manualChunks: {
-                    react: ['react', 'react-dom'],
-                    router: ['react-router-dom'],
-                    query: ['@tanstack/react-query'],
-                    forms: ['react-hook-form', '@hookform/resolvers', 'zod'],
-                    mui: ['@mui/material', '@mui/icons-material', '@emotion/react', '@emotion/styled']
+                manualChunks(id) {
+                    if (!id.includes('node_modules'))
+                        return;
+                    if (id.includes('react-router-dom'))
+                        return 'router';
+                    if (id.includes('@tanstack/react-query'))
+                        return 'query';
+                    if (id.includes('react-hook-form') || id.includes('@hookform/resolvers') || id.includes('zod')) {
+                        return 'forms';
+                    }
+                    if (id.includes('@mui/x-date-pickers'))
+                        return 'mui-date';
+                    if (id.includes('@mui/icons-material'))
+                        return 'mui-icons';
+                    if (id.includes('@emotion/'))
+                        return 'emotion';
+                    if (id.includes('@mui/system') || id.includes('@mui/styled-engine') || id.includes('@mui/utils')) {
+                        return 'mui-system';
+                    }
+                    if (id.includes('@mui/material'))
+                        return 'mui-material';
+                    if (id.includes('leaflet') || id.includes('maplibre-gl'))
+                        return 'maps';
                 }
             }
         }

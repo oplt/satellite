@@ -45,33 +45,85 @@ type CountryMapProps = {
     onViewportSizeChange: (size: { width: number; height: number }) => void;
 };
 
-function expandBBox(bbox: BBox, paddingRatio = 0.18): BBox {
-    const lngPadding = (bbox.east - bbox.west) * paddingRatio;
-    const latPadding = (bbox.north - bbox.south) * paddingRatio;
+const WEB_MERCATOR_LAT_LIMIT = 85.05112878;
+const MIN_MAP_ZOOM = 5;
+const MAX_MAP_ZOOM = 21;
+const TILE_KEEP_BUFFER = 2;
+const WORLD_TILE_BOUNDS = L.latLngBounds(
+    [-WEB_MERCATOR_LAT_LIMIT, -180],
+    [WEB_MERCATOR_LAT_LIMIT, 180]
+);
 
+function clamp(value: number, min: number, max: number): number {
+    return Math.max(min, Math.min(max, value));
+}
+
+function sanitizeZoom(zoom: number, fallback = 8): number {
+    if (!Number.isFinite(zoom)) {
+        return fallback;
+    }
+
+    return clamp(Math.round(zoom * 4) / 4, MIN_MAP_ZOOM, MAX_MAP_ZOOM);
+}
+
+function sanitizeLng(lng: number): number {
+    return Number.isFinite(lng) ? clamp(lng, -180, 180) : 0;
+}
+
+function sanitizeLat(lat: number): number {
+    return Number.isFinite(lat) ? clamp(lat, -WEB_MERCATOR_LAT_LIMIT, WEB_MERCATOR_LAT_LIMIT) : 0;
+}
+
+function sanitizeBBox(bbox: BBox): BBox {
+    const west = sanitizeLng(Math.min(bbox.west, bbox.east));
+    const east = sanitizeLng(Math.max(bbox.west, bbox.east));
+    const south = sanitizeLat(Math.min(bbox.south, bbox.north));
+    const north = sanitizeLat(Math.max(bbox.south, bbox.north));
+
+    // Leaflet can enter an invalid tile-range state if bounds collapse to a
+    // point/line. Keep a tiny valid extent so projected tile bounds stay finite.
+    const minSpan = 0.0001;
     return {
-        west: bbox.west - lngPadding,
-        south: bbox.south - latPadding,
-        east: bbox.east + lngPadding,
-        north: bbox.north + latPadding,
+        west,
+        south,
+        east: east <= west ? clamp(west + minSpan, -180, 180) : east,
+        north: north <= south ? clamp(south + minSpan, -WEB_MERCATOR_LAT_LIMIT, WEB_MERCATOR_LAT_LIMIT) : north,
     };
 }
 
+function expandBBox(bbox: BBox, paddingRatio = 0.18): BBox {
+    const safeBBox = sanitizeBBox(bbox);
+    const lngPadding = (safeBBox.east - safeBBox.west) * paddingRatio;
+    const latPadding = (safeBBox.north - safeBBox.south) * paddingRatio;
+
+    return sanitizeBBox({
+        west: safeBBox.west - lngPadding,
+        south: safeBBox.south - latPadding,
+        east: safeBBox.east + lngPadding,
+        north: safeBBox.north + latPadding,
+    });
+}
+
 function toLeafletBounds(bbox: BBox): LatLngBounds {
+    const safeBBox = sanitizeBBox(bbox);
     return L.latLngBounds(
-        [bbox.south, bbox.west],
-        [bbox.north, bbox.east]
+        [safeBBox.south, safeBBox.west],
+        [safeBBox.north, safeBBox.east]
     );
+}
+
+function countryCenter(country: CountryConfig): [number, number] {
+    return [sanitizeLat(country.center[1]), sanitizeLng(country.center[0])];
 }
 
 function boundsToBBox(map: LeafletMap): BBox {
     const bounds = map.getBounds();
-    return {
+    return sanitizeBBox({
         west: bounds.getWest(),
         south: bounds.getSouth(),
         east: bounds.getEast(),
         north: bounds.getNorth(),
-    };
+    });
 }
 
 function overlayFilter(layer: RasterOverlayLayer["layer"]): string {
@@ -80,10 +132,19 @@ function overlayFilter(layer: RasterOverlayLayer["layer"]): string {
         : "brightness(1.28) contrast(1.18) saturate(1.1)";
 }
 
-function createTileLayer(baseMap: BaseMapConfig): TileLayer {
+function createTileLayer(baseMap: BaseMapConfig, bounds: LatLngBounds): TileLayer {
+    const maxZoom = sanitizeZoom(baseMap.maxZoom ?? MAX_MAP_ZOOM, 19);
     const options: TileLayerOptions = {
         attribution: baseMap.attribution,
-        maxZoom: baseMap.maxZoom ?? 19,
+        bounds,
+        noWrap: true,
+        minZoom: MIN_MAP_ZOOM,
+        maxNativeZoom: maxZoom,
+        maxZoom: MAX_MAP_ZOOM,
+        tileSize: 256,
+        keepBuffer: TILE_KEEP_BUFFER,
+        updateWhenIdle: true,
+        updateWhenZooming: false,
         crossOrigin: true,
     };
 
@@ -109,6 +170,20 @@ function safelyRemoveLayer(map: LeafletMap | null, layer: Layer | null) {
     }
 }
 
+type TrackedRasterLayer = Layer & {
+    __overlaySourceType?: RasterOverlayLayer["sourceType"];
+};
+
+function applyImageLayerStyles(imageLayer: L.ImageOverlay, overlay: RasterOverlayLayer) {
+    const image = imageLayer.getElement();
+    if (!image) {
+        return;
+    }
+
+    image.style.filter = overlayFilter(overlay.layer);
+    image.style.mixBlendMode = overlay.blendMode ?? "normal";
+}
+
 export function CountryMap({
     country,
     baseMapMode,
@@ -125,7 +200,7 @@ export function CountryMap({
     const resizeObserverRef = useRef<ResizeObserver | null>(null);
     const mapRef = useRef<LeafletMap | null>(null);
     const tileLayerRef = useRef<TileLayer | null>(null);
-    const rasterLayerRefs = useRef<Layer[]>([]);
+    const rasterLayerRefs = useRef<Map<string, Layer>>(new Map());
     const aiLayerGroupRef = useRef<LayerGroup | null>(null);
     const [mapLoaded, setMapLoaded] = useState(false);
     const [mapError, setMapError] = useState<string | null>(null);
@@ -137,7 +212,7 @@ export function CountryMap({
         rasterLayerRefs.current.forEach((layerInstance) => {
             safelyRemoveLayer(instance, layerInstance);
         });
-        rasterLayerRefs.current = [];
+        rasterLayerRefs.current.clear();
     }, []);
 
     const clearAiLayer = useCallback((instance: LeafletMap | null) => {
@@ -165,15 +240,17 @@ export function CountryMap({
         }
 
         const instance = L.map(containerRef.current, {
-            center: [
-                initialCountryRef.current.center[1],
-                initialCountryRef.current.center[0],
-            ],
-            zoom: initialCountryRef.current.zoom,
+            center: countryCenter(initialCountryRef.current),
+            zoom: sanitizeZoom(initialCountryRef.current.zoom),
+            minZoom: MIN_MAP_ZOOM,
+            maxZoom: MAX_MAP_ZOOM,
+            zoomSnap: 0.25,
+            zoomDelta: 0.5,
             zoomControl: false,
             attributionControl: true,
             worldCopyJump: false,
-            maxBoundsViscosity: 1,
+            maxBoundsViscosity: 0.8,
+            preferCanvas: true,
         });
 
         L.control.zoom({ position: "topright" }).addTo(instance);
@@ -183,11 +260,8 @@ export function CountryMap({
 
         instance.whenReady(() => {
             instance.setView(
-                [
-                    initialCountryRef.current.center[1],
-                    initialCountryRef.current.center[0],
-                ],
-                initialCountryRef.current.zoom,
+                countryCenter(initialCountryRef.current),
+                sanitizeZoom(initialCountryRef.current.zoom),
                 { animate: false }
             );
             syncViewport();
@@ -230,8 +304,8 @@ export function CountryMap({
 
         instance.setMaxBounds(toLeafletBounds(expandBBox(country.bbox)));
         instance.setView(
-            [country.center[1], country.center[0]],
-            country.zoom,
+            countryCenter(country),
+            sanitizeZoom(country.zoom),
             { animate: true }
         );
     }, [country]);
@@ -243,7 +317,11 @@ export function CountryMap({
         }
 
         const baseMap = BASE_MAPS[baseMapMode];
-        const tileLayer = createTileLayer(baseMap);
+        const tileBounds =
+            baseMapMode === "flemish_orthophoto"
+                ? toLeafletBounds(expandBBox(country.bbox, 0.35))
+                : WORLD_TILE_BOUNDS;
+        const tileLayer = createTileLayer(baseMap, tileBounds);
         const handleTileLoad = () => {
             setMapLoaded(true);
             setMapError(null);
@@ -262,8 +340,8 @@ export function CountryMap({
 
         tileLayer.on("load", handleTileLoad);
         tileLayer.on("tileerror", handleTileError);
+        safelyRemoveLayer(instance, tileLayerRef.current);
         tileLayer.addTo(instance);
-        tileLayerRef.current?.remove();
         tileLayerRef.current = tileLayer;
 
         return () => {
@@ -274,7 +352,7 @@ export function CountryMap({
                 tileLayerRef.current = null;
             }
         };
-    }, [baseMapMode]);
+    }, [baseMapMode, country]);
 
     useEffect(() => {
         const instance = mapRef.current;
@@ -282,39 +360,77 @@ export function CountryMap({
             return;
         }
 
-        clearRasterLayers(instance);
+        const visibleOverlays = overlays.filter((overlay) => overlay.visible);
+        const visibleOverlayIds = new Set(visibleOverlays.map((overlay) => overlay.id));
 
-        for (const overlay of overlays) {
-            if (!overlay.visible) {
+        for (const [id, layerInstance] of rasterLayerRefs.current.entries()) {
+            if (!visibleOverlayIds.has(id)) {
+                safelyRemoveLayer(instance, layerInstance);
+                rasterLayerRefs.current.delete(id);
+            }
+        }
+
+        for (const overlay of visibleOverlays) {
+            const existingLayer = rasterLayerRefs.current.get(overlay.id) as TrackedRasterLayer | undefined;
+
+            if (existingLayer && existingLayer.__overlaySourceType !== overlay.sourceType) {
+                safelyRemoveLayer(instance, existingLayer);
+                rasterLayerRefs.current.delete(overlay.id);
+            }
+
+            const currentLayer = rasterLayerRefs.current.get(overlay.id) as TrackedRasterLayer | undefined;
+
+            if (currentLayer) {
+                if (overlay.sourceType === "tile") {
+                    const tileLayer = currentLayer as TileLayer;
+                    tileLayer.setUrl(overlay.imageUrl, false);
+                    tileLayer.setOpacity(overlay.opacity);
+                } else {
+                    const imageLayer = currentLayer as L.ImageOverlay;
+                    imageLayer.setUrl(overlay.imageUrl);
+                    imageLayer.setBounds(toLeafletBounds(overlay.bbox));
+                    imageLayer.setOpacity(overlay.opacity);
+                    applyImageLayerStyles(imageLayer, overlay);
+                }
                 continue;
             }
 
             if (overlay.sourceType === "tile") {
+                const overlayMaxNativeZoom = sanitizeZoom(
+                    overlay.maxNativeZoom ?? overlay.maxZoom ?? 18,
+                    18
+                );
                 const tileLayer = L.tileLayer(overlay.imageUrl, {
-                    attribution: "NASA GIBS / Earthdata",
-                    maxNativeZoom: 9,
-                    maxZoom: 18,
+                    attribution: overlay.label,
+                    bounds: WORLD_TILE_BOUNDS,
+                    noWrap: true,
+                    minZoom: MIN_MAP_ZOOM,
+                    maxNativeZoom: overlayMaxNativeZoom,
+                    maxZoom: MAX_MAP_ZOOM,
+                    tileSize: 256,
+                    keepBuffer: TILE_KEEP_BUFFER,
+                    updateWhenIdle: true,
+                    updateWhenZooming: false,
                     crossOrigin: true,
                     opacity: overlay.opacity,
-                });
+                }) as TrackedRasterLayer & TileLayer;
+
+                tileLayer.__overlaySourceType = "tile";
                 tileLayer.addTo(instance);
-                rasterLayerRefs.current.push(tileLayer);
+                rasterLayerRefs.current.set(overlay.id, tileLayer);
                 continue;
             }
 
             const imageLayer = L.imageOverlay(overlay.imageUrl, toLeafletBounds(overlay.bbox), {
                 interactive: false,
                 opacity: overlay.opacity,
-            });
-            imageLayer.on("load", () => {
-                const image = imageLayer.getElement();
-                if (image) {
-                    image.style.filter = overlayFilter(overlay.layer);
-                    image.style.mixBlendMode = overlay.blendMode ?? "normal";
-                }
-            });
+            }) as TrackedRasterLayer & L.ImageOverlay;
+
+            imageLayer.__overlaySourceType = "image";
+            imageLayer.on("load", () => applyImageLayerStyles(imageLayer, overlay));
             imageLayer.addTo(instance);
-            rasterLayerRefs.current.push(imageLayer);
+            applyImageLayerStyles(imageLayer, overlay);
+            rasterLayerRefs.current.set(overlay.id, imageLayer);
         }
 
         clearAiLayer(instance);
@@ -340,7 +456,7 @@ export function CountryMap({
             group.addTo(instance);
             aiLayerGroupRef.current = group;
         }
-    }, [aiDetections, aiOverlayEnabled, aiOverlayOpacity, clearAiLayer, clearRasterLayers, overlays]);
+    }, [aiDetections, aiOverlayEnabled, aiOverlayOpacity, clearAiLayer, overlays]);
 
     return (
         <Paper

@@ -1,0 +1,37 @@
+.PHONY: local-dev kill-dev kill-celery kill-ports status
+
+kill-celery:
+	@echo "Killing celery processes..."
+	-pgrep -f "[c]elery.*backend.workers.celery_app" | xargs -r kill
+	-sleep 1
+	-pgrep -f "[c]elery.*backend.workers.celery_app" | xargs -r kill -9 2>/dev/null || true
+
+kill-ports:
+	@echo "Freeing ports..."
+	-fuser -k 8000/tcp 2>/dev/null || true
+	-fuser -k 5173/tcp 2>/dev/null || true
+
+kill-dev:
+	@echo "Stopping all development services..."
+	-pgrep -f "[h]oncho -f Procfile.dev start" | xargs -r kill
+	-pgrep -f "[u]vicorn backend.api.main:app --reload" | xargs -r kill
+	-pgrep -f "[v]ite" | xargs -r kill
+	-pgrep -f "[n]pm run dev" | xargs -r kill
+	-sleep 1
+	-pgrep -f "[h]oncho -f Procfile.dev start" | xargs -r kill -9 2>/dev/null || true
+	-pgrep -f "[u]vicorn backend.api.main:app --reload" | xargs -r kill -9 2>/dev/null || true
+	-pgrep -f "[v]ite" | xargs -r kill -9 2>/dev/null || true
+	-pgrep -f "[n]pm run dev" | xargs -r kill -9 2>/dev/null || true
+	-$(MAKE) -f Makefile.local kill-ports
+	@echo "All services stopped"
+
+status:
+	@echo "=== Running Services ==="
+	@pgrep -af "[c]elery.*backend.workers" && echo "✓ Celery" || echo "✗ Celery"
+	@pgrep -af "[u]vicorn.*backend.api" && echo "✓ Backend" || echo "✗ Backend"
+	@pgrep -af "[v]ite" && echo "✓ Vite" || echo "✗ Vite"
+	@pgrep -af "[r]edis-server" && echo "✓ Redis" || echo "✗ Redis"
+
+local-dev: kill-dev
+	@echo "Starting development environment..."
+	honcho -f Procfile.dev start

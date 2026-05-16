@@ -2,113 +2,125 @@ import { alpha, createTheme, type PaletteMode } from "@mui/material/styles";
 
 function buildTheme(mode: PaletteMode) {
     const isDark = mode === "dark";
-    const brandOrange = "#FE7023";
-    const ink = "#1B1B1B";
-    const mist = "#E4E4E4";
-    const canvas = "#F6F6F6";
+    const ink = "#0C0A09";
+    const warmInk = "#292524";
+    const body = "#4E4E4E";
+    const muted = "#777169";
+    const hairline = "#E7E5E4";
+    const canvas = "#F5F5F5";
+    const canvasSoft = "#FAFAFA";
+    const surfaceStrong = "#F0EFED";
+    const success = "#16A34A";
+    const error = "#DC2626";
 
     const theme = createTheme({
         palette: {
             mode,
             primary: {
-                main: brandOrange,
-                light: "#FF935D",
-                dark: "#D95B17",
-                contrastText: ink,
+                main: warmInk,
+                light: "#57534E",
+                dark: ink,
+                contrastText: "#FFFFFF",
             },
             secondary: {
-                main: isDark ? mist : "#5D5D5D",
-                light: isDark ? canvas : "#848484",
-                dark: isDark ? "#CFCFCF" : ink,
+                main: isDark ? "#A8A29E" : muted,
+                light: isDark ? canvas : "#A8A29E",
+                dark: isDark ? hairline : warmInk,
             },
             success: {
-                main: isDark ? "#6AC88E" : "#2F8F57",
+                main: isDark ? "#86EFAC" : success,
             },
             warning: {
-                main: isDark ? "#FFB37F" : "#D27A34",
+                main: isDark ? "#F4C5A8" : "#B45309",
             },
             error: {
-                main: isDark ? "#F28A78" : "#C84A37",
+                main: isDark ? "#FCA5A5" : error,
             },
             background: {
                 default: isDark ? ink : canvas,
-                paper: isDark ? "#232323" : "#FBFBFB",
+                paper: isDark ? "#1C1917" : "#FFFFFF",
             },
             text: {
                 primary: isDark ? canvas : ink,
-                secondary: isDark ? "#C3C3C3" : "#5E5E5E",
+                secondary: isDark ? "#D6D3D1" : body,
             },
-            divider: isDark ? alpha(mist, 0.14) : mist,
+            divider: isDark ? alpha(hairline, 0.14) : hairline,
         },
         shape: {
-            borderRadius: 2,
+            borderRadius: 8,
         },
         typography: {
             fontFamily: '"Manrope", "Segoe UI", sans-serif',
             h1: {
-                fontSize: "clamp(2.6rem, 6vw, 4.6rem)",
-                fontWeight: 800,
-                letterSpacing: "-0.06em",
-                lineHeight: 0.96,
+                fontFamily: '"Georgia", "Times New Roman", serif',
+                fontSize: "clamp(2.25rem, 5vw, 4rem)",
+                fontWeight: 300,
+                letterSpacing: "0",
+                lineHeight: 1.05,
             },
             h2: {
-                fontSize: "clamp(2.2rem, 4vw, 3.4rem)",
-                fontWeight: 800,
-                letterSpacing: "-0.05em",
-                lineHeight: 1,
-            },
-            h3: {
-                fontSize: "clamp(1.85rem, 3vw, 2.6rem)",
-                fontWeight: 800,
-                letterSpacing: "-0.04em",
+                fontFamily: '"Georgia", "Times New Roman", serif',
+                fontSize: "clamp(2rem, 4vw, 3rem)",
+                fontWeight: 300,
+                letterSpacing: "0",
                 lineHeight: 1.08,
             },
+            h3: {
+                fontFamily: '"Georgia", "Times New Roman", serif',
+                fontSize: "clamp(1.8rem, 3vw, 2.25rem)",
+                fontWeight: 300,
+                letterSpacing: "0",
+                lineHeight: 1.13,
+            },
             h4: {
-                fontSize: "clamp(1.55rem, 2vw, 2rem)",
-                fontWeight: 780,
-                letterSpacing: "-0.035em",
-                lineHeight: 1.14,
+                fontFamily: '"Georgia", "Times New Roman", serif',
+                fontSize: "clamp(1.45rem, 2vw, 1.9rem)",
+                fontWeight: 300,
+                letterSpacing: "0",
+                lineHeight: 1.18,
             },
             h5: {
                 fontSize: "1.25rem",
-                fontWeight: 760,
-                letterSpacing: "-0.03em",
-                lineHeight: 1.2,
+                fontWeight: 500,
+                letterSpacing: "0",
+                lineHeight: 1.3,
             },
             h6: {
                 fontSize: "1.05rem",
-                fontWeight: 760,
-                letterSpacing: "-0.02em",
+                fontWeight: 500,
+                letterSpacing: "0",
                 lineHeight: 1.3,
             },
             subtitle1: {
                 fontSize: "0.98rem",
-                fontWeight: 700,
-                letterSpacing: "-0.015em",
+                fontWeight: 500,
+                letterSpacing: "0",
             },
             subtitle2: {
                 fontSize: "0.87rem",
-                fontWeight: 700,
+                fontWeight: 500,
                 letterSpacing: "0.01em",
             },
             body1: {
                 fontSize: "0.98rem",
                 lineHeight: 1.6,
+                letterSpacing: "0.01em",
             },
             body2: {
                 fontSize: "0.9rem",
                 lineHeight: 1.6,
+                letterSpacing: "0.01em",
             },
             button: {
                 fontSize: "0.95rem",
-                fontWeight: 700,
-                letterSpacing: "-0.01em",
+                fontWeight: 500,
+                letterSpacing: "0",
                 textTransform: "none",
             },
             overline: {
                 fontSize: "0.72rem",
-                fontWeight: 800,
-                letterSpacing: "0.14em",
+                fontWeight: 700,
+                letterSpacing: "0.08em",
                 textTransform: "uppercase",
             },
             caption: {
@@ -137,8 +149,8 @@ function buildTheme(mode: PaletteMode) {
                         margin: 0,
                         backgroundColor: theme.palette.background.default,
                         backgroundImage: isDark
-                            ? `radial-gradient(circle at top left, ${alpha(brandOrange, 0.22)}, transparent 26%), radial-gradient(circle at 78% 2%, ${alpha(mist, 0.06)}, transparent 22%), linear-gradient(180deg, #1B1B1B 0%, #151515 100%)`
-                            : `radial-gradient(circle at top left, ${alpha(brandOrange, 0.14)}, transparent 25%), radial-gradient(circle at 78% 2%, ${alpha(ink, 0.04)}, transparent 20%), linear-gradient(180deg, #F6F6F6 0%, #EEEEEE 100%)`,
+                            ? "linear-gradient(180deg, #0C0A09 0%, #1C1917 100%)"
+                            : `linear-gradient(180deg, ${canvas} 0%, ${canvasSoft} 100%)`,
                         color: theme.palette.text.primary,
                         textRendering: "optimizeLegibility",
                         WebkitFontSmoothing: "antialiased",
@@ -155,7 +167,6 @@ function buildTheme(mode: PaletteMode) {
             MuiAppBar: {
                 styleOverrides: {
                     root: {
-                        backdropFilter: "blur(20px)",
                         backgroundImage: "none",
                     },
                 },
@@ -166,7 +177,7 @@ function buildTheme(mode: PaletteMode) {
                         backgroundImage: "none",
                     },
                     rounded: {
-                        borderRadius: theme.shape.borderRadius,
+                        borderRadius: 16,
                     },
                 },
             },
@@ -176,12 +187,12 @@ function buildTheme(mode: PaletteMode) {
                 },
                 styleOverrides: {
                     root: {
-                        borderRadius: Number(theme.shape.borderRadius) + 1,
+                        borderRadius: 16,
                         border: `1px solid ${theme.palette.divider}`,
-                        backgroundColor: alpha(theme.palette.background.paper, isDark ? 0.8 : 0.92),
+                        backgroundColor: alpha(theme.palette.background.paper, isDark ? 0.88 : 0.96),
                         boxShadow: isDark
-                            ? "0 18px 44px rgba(0, 0, 0, 0.38)"
-                            : "0 18px 36px rgba(27, 27, 27, 0.08)",
+                            ? "0 12px 32px rgba(0, 0, 0, 0.28)"
+                            : "0 4px 16px rgba(12, 10, 9, 0.04)",
                     },
                 },
             },
@@ -196,13 +207,11 @@ function buildTheme(mode: PaletteMode) {
                         borderRadius: 999,
                     },
                     contained: {
-                        boxShadow: isDark
-                            ? "0 16px 30px rgba(254, 112, 35, 0.24)"
-                            : "0 14px 28px rgba(254, 112, 35, 0.22)",
+                        boxShadow: "none",
                     },
                     outlined: {
-                        borderColor: alpha(theme.palette.text.primary, isDark ? 0.16 : 0.12),
-                        backgroundColor: alpha(theme.palette.background.paper, isDark ? 0.74 : 0.82),
+                        borderColor: alpha(theme.palette.text.primary, isDark ? 0.22 : 0.16),
+                        backgroundColor: "transparent",
                     },
                     text: {
                         color: theme.palette.text.primary,
@@ -220,7 +229,8 @@ function buildTheme(mode: PaletteMode) {
                         fontWeight: 700,
                     },
                     outlined: {
-                        borderColor: alpha(theme.palette.text.primary, isDark ? 0.12 : 0.1),
+                        borderColor: alpha(theme.palette.text.primary, isDark ? 0.18 : 0.12),
+                        backgroundColor: isDark ? alpha(canvas, 0.06) : surfaceStrong,
                     },
                 },
             },
@@ -275,8 +285,7 @@ function buildTheme(mode: PaletteMode) {
                 styleOverrides: {
                     paper: {
                         borderRight: "none",
-                        backgroundColor: alpha(theme.palette.background.paper, isDark ? 0.82 : 0.94),
-                        backdropFilter: "blur(22px)",
+                        backgroundColor: alpha(theme.palette.background.default, isDark ? 0.96 : 0.98),
                     },
                 },
             },
@@ -286,14 +295,14 @@ function buildTheme(mode: PaletteMode) {
                         borderRadius: 16,
                         minHeight: 48,
                         "&.Mui-selected": {
-                            backgroundColor: alpha(theme.palette.primary.main, isDark ? 0.18 : 0.1),
+                            backgroundColor: isDark ? alpha(canvas, 0.08) : surfaceStrong,
                             color: theme.palette.primary.main,
                             "& .MuiListItemIcon-root": {
                                 color: theme.palette.primary.main,
                             },
                         },
                         "&:hover": {
-                            backgroundColor: alpha(theme.palette.primary.main, isDark ? 0.12 : 0.06),
+                            backgroundColor: isDark ? alpha(canvas, 0.06) : alpha(warmInk, 0.05),
                         },
                     },
                 },

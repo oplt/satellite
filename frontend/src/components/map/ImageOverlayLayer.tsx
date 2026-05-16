@@ -15,12 +15,16 @@ function bboxToCoordinates(overlay: MapOverlay) {
 }
 
 function removeOverlay(map: Map) {
-    if (map.getLayer(LAYER_ID)) {
-        map.removeLayer(LAYER_ID);
-    }
+    try {
+        if (map.getLayer(LAYER_ID)) {
+            map.removeLayer(LAYER_ID);
+        }
 
-    if (map.getSource(SOURCE_ID)) {
-        map.removeSource(SOURCE_ID);
+        if (map.getSource(SOURCE_ID)) {
+            map.removeSource(SOURCE_ID);
+        }
+    } catch {
+        // The map/style can be disposed while React is cleaning up.
     }
 }
 
@@ -106,12 +110,15 @@ export function ImageOverlayLayer({
 
         if (map.isStyleLoaded()) {
             upsertOverlay();
-            return;
+            return () => removeOverlay(map);
         }
 
         map.once("style.load", upsertOverlay);
         return () => {
             map.off("style.load", upsertOverlay);
+            if (map.isStyleLoaded()) {
+                removeOverlay(map);
+            }
         };
     }, [map, overlay]);
 

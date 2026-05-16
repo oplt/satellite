@@ -4,9 +4,8 @@ from datetime import timedelta
 from math import log, pi, radians, tan
 from typing import Any
 
-from backend.modules.copernicus.models import SatelliteLayerMode, SceneRecord, SUPPORTED_COLLECTIONS
+from backend.modules.copernicus.models import SUPPORTED_COLLECTIONS, SatelliteLayerMode, SceneRecord
 from backend.modules.copernicus.schemas import BBox, DateRange
-
 
 WEB_MERCATOR_CRS = "http://www.opengis.net/def/crs/EPSG/0/3857"
 WEB_MERCATOR_MAX_LAT = 85.05112878

@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field
 
 from backend.modules.projects.schemas import TaskPriority, TaskStatus
 
-
 CalendarEntryType = Literal["event", "appointment"]
 CalendarItemType = Literal["event", "appointment", "task"]
 CalendarItemSource = Literal["planner", "task"]

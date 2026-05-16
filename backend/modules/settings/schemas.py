@@ -2,7 +2,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 ENV_KEY_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]*$"
 SETTING_KEY_PATTERN = r"^[A-Za-z0-9_.:-]+$"
 

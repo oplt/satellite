@@ -2,7 +2,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
-
 MODULE_KEY_PATTERN = r"^[a-z0-9_]+$"
 
 

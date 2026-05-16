@@ -15,7 +15,7 @@ class BBox(BaseModel):
     north: float = Field(ge=-90, le=90)
 
     @model_validator(mode="after")
-    def validate_bbox(self) -> "BBox":
+    def validate_bbox(self) -> BBox:
         if self.west >= self.east:
             raise ValueError("bbox west must be smaller than east")
         if self.south >= self.north:
@@ -34,7 +34,7 @@ class DateRange(BaseModel):
     end_date: date
 
     @model_validator(mode="after")
-    def validate_range(self) -> "DateRange":
+    def validate_range(self) -> DateRange:
         if self.end_date < self.start_date:
             raise ValueError("date_range end_date must be greater than or equal to start_date")
         return self

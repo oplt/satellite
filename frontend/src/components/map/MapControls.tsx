@@ -113,11 +113,13 @@ export function MapControls({
                                 onAiOverlayOpacityChange,
                                 activeLayers,
                             }: MapControlsProps) {
-    const statusChips = [
-        cache?.searchHit ? "Search cache" : "Live search",
-        cache?.renderHit ? "Render cache" : "Fresh render",
-        cache?.tokenHit == null ? "Token unused" : cache.tokenHit ? "Cached token" : "Fresh token",
-    ];
+    const statusChips = cache
+        ? [
+            cache.searchHit ? "Search cache" : "Live search",
+            cache.renderHit ? "Render cache" : "Fresh render",
+            cache.tokenHit == null ? "Token unused" : cache.tokenHit ? "Cached token" : "Fresh token",
+        ]
+        : ["No imagery loaded"];
 
     return (
         <Stack spacing={2}>
@@ -127,8 +129,8 @@ export function MapControls({
                         <Box>
                             <Typography variant="h5">Satellite controls</Typography>
                             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
-                                Frame the Leaflet view first, then fetch Copernicus imagery only for
-                                the current viewport.
+                                Frame the Leaflet view first. Copernicus imagery is loaded for the
+                                current viewport; NASA and Vlaanderen use tile layers.
                             </Typography>
                         </Box>
 
@@ -147,7 +149,7 @@ export function MapControls({
                                 ))}
                             </Select>
                         </FormControl>
-                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                        <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'nowrap', overflow: 'auto' }}>
                             <Button
                                 variant={viewMode === "nasa" ? "contained" : "outlined"}
                                 onClick={() => onModeButtonClick("nasa")}
@@ -215,7 +217,7 @@ export function MapControls({
                             </Stack>
                         )}
 
-                        {(viewMode === "copernicus" || viewMode === "vlaanderen") && (
+                        {viewMode === "copernicus" && (
                             <>
                                 <Stack spacing={1.5}>
                                     <DatePicker
@@ -314,7 +316,7 @@ export function MapControls({
                             />
                         </Stack>
 
-                        {(viewMode === "copernicus" || viewMode === "vlaanderen") && ndviBlendEnabled && (
+                        {viewMode === "copernicus" && ndviBlendEnabled && (
                             <Stack spacing={0.5} sx={{ px: 0.5 }}>
                                 <Typography variant="caption" color="text.secondary">
                                     NDVI opacity ({Math.round(ndviOpacity * 100)}%)
@@ -403,8 +405,8 @@ export function MapControls({
                             </>
                         ) : (
                             <Typography variant="body2" color="text.secondary">
-                                Adjust the map, then click Load Copernicus imagery to fetch the best
-                                scene for the current viewport.
+                                Choose Copernicus/NASA/Vlaanderen and adjust the map to load imagery for
+                                the current viewport.
                             </Typography>
                         )}
                     </Stack>

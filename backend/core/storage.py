@@ -97,9 +97,32 @@ class ObjectStorage:
         try:
             await asyncio.to_thread(_upload)
         except Exception as exc:
-            raise ObjectStorageError("Failed to upload avatar to object storage") from exc
+            raise ObjectStorageError("Failed to upload object to object storage") from exc
 
         return self.public_url_for(object_key)
+
+    async def download_bytes(self, object_key: str) -> tuple[bytes, str] | None:
+        if not self.is_configured:
+            return None
+
+        def _download() -> tuple[bytes, str] | None:
+            try:
+                response = self._client.get_object(Bucket=settings.STORAGE_BUCKET, Key=object_key)
+            except Exception as exc:
+                response = getattr(exc, "response", {})
+                error = response.get("Error", {}) if isinstance(response, dict) else {}
+                if error.get("Code") in {"NoSuchKey", "404", "NotFound"}:
+                    return None
+                raise
+
+            body = response["Body"].read()
+            content_type = response.get("ContentType") or "application/octet-stream"
+            return body, content_type
+
+        try:
+            return await asyncio.to_thread(_download)
+        except Exception as exc:
+            raise ObjectStorageError("Failed to download object from object storage") from exc
 
     async def delete_object(self, object_key: str | None) -> None:
         if not self.is_configured or not object_key:

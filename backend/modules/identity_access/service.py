@@ -1,6 +1,6 @@
 import hashlib
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 
 from fastapi import HTTPException
@@ -107,7 +107,7 @@ class IdentityService:
             raise HTTPException(status_code=403, detail="Account disabled")
 
         raw_refresh = generate_refresh_token()
-        expires_at = datetime.now(timezone.utc) + timedelta(
+        expires_at = datetime.now(UTC) + timedelta(
             days=settings.REFRESH_TOKEN_EXPIRE_DAYS
         )
         await self.repo.create_refresh_session(
@@ -129,7 +129,7 @@ class IdentityService:
 
         if not session or session.is_revoked:
             raise HTTPException(status_code=401, detail="Invalid refresh token")
-        if session.expires_at < datetime.now(timezone.utc):
+        if session.expires_at < datetime.now(UTC):
             raise HTTPException(status_code=401, detail="Refresh token expired")
 
         user = await self.repo.get_user_by_id(session.user_id)
@@ -139,7 +139,7 @@ class IdentityService:
         await self.repo.revoke_refresh_session(session)
 
         new_raw = generate_refresh_token()
-        new_expires = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        new_expires = datetime.now(UTC) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
         await self.repo.create_refresh_session(user.id, hash_refresh_token(new_raw), new_expires)
         await self.db.commit()
 

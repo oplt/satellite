@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import dayjs from "dayjs";
 import {
     Box,
+    Button,
     Chip,
     Stack,
 } from "@mui/material";
@@ -28,6 +29,34 @@ import type {
 } from "../../types/satellite";
 
 const DEFAULT_COLLECTION = "sentinel-2-l2a";
+
+function bboxCacheKey(bbox: BBox): string {
+    return [bbox.west, bbox.south, bbox.east, bbox.north]
+        .map((value) => value.toFixed(5))
+        .join(",");
+}
+
+function buildCopernicusRequestKey(params: {
+    bbox: BBox;
+    startDate: string;
+    endDate: string;
+    layer: SatelliteLayerMode;
+    cloudThreshold: number;
+    width: number;
+    height: number;
+    ndviBlendEnabled: boolean;
+}): string {
+    return [
+        bboxCacheKey(params.bbox),
+        params.startDate,
+        params.endDate,
+        params.layer,
+        params.cloudThreshold,
+        params.width,
+        params.height,
+        params.ndviBlendEnabled ? "ndvi-blend" : "single",
+    ].join("|");
+}
 
 function clamp(value: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, value));
@@ -88,19 +117,37 @@ export function SatelliteDashboard() {
     const requestIdRef = useRef(0);
     const activeObjectUrlRef = useRef<string | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
+    const inFlightCopernicusRequestKeyRef = useRef<string | null>(null);
+    const baseOpacityRef = useRef(baseOpacity);
+    const ndviOpacityRef = useRef(ndviOpacity);
     const [viewMode, setViewMode] = useState<ViewMode>("copernicus");
 
     const [nasaDate, setNasaDate] = useState(dayjs().format("YYYY-MM-DD"));
 
     const country =
         COUNTRY_OPTIONS.find((item) => item.code === selectedCountryCode) ?? DEFAULT_COUNTRY;
-    const requestWidth = mapSize ? clamp(mapSize.width, 384, 1280) : null;
-    const requestHeight = mapSize ? clamp(mapSize.height, 384, 1280) : null;
+    const MAX_DIM = 1536;
+    const devicePixelRatio = typeof window === "undefined" ? 1 : window.devicePixelRatio ?? 1;
+    const requestWidth = mapSize ? clamp(Math.round(mapSize.width * devicePixelRatio), 384, MAX_DIM) : null;
+    const requestHeight = mapSize ? clamp(Math.round(mapSize.height * devicePixelRatio), 384, MAX_DIM) : null;
     const debouncedBBox = useDebouncedBounds(currentBBox, 600);
 
     useEffect(() => {
         setCurrentBBox(null);
+        setOverlayStack([]);
+        setAiDetections([]);
+        setScene(null);
+        setCacheMetadata(null);
+        setError(null);
     }, [country]);
+
+    useEffect(() => {
+        baseOpacityRef.current = baseOpacity;
+    }, [baseOpacity]);
+
+    useEffect(() => {
+        ndviOpacityRef.current = ndviOpacity;
+    }, [ndviOpacity]);
 
     useEffect(() => {
         setNasaDate(dayjs().subtract(nasaTimeOffsetDays, "day").format("YYYY-MM-DD"));
@@ -139,7 +186,18 @@ export function SatelliteDashboard() {
         );
     }, [ndviOpacity]);
 
+    const cancelActiveRasterRequest = useCallback(() => {
+        requestIdRef.current += 1;
+        abortControllerRef.current?.abort();
+        abortControllerRef.current = null;
+        inFlightCopernicusRequestKeyRef.current = null;
+        setLoading(false);
+        revokeObjectUrl(activeObjectUrlRef.current);
+        activeObjectUrlRef.current = null;
+    }, []);
+
     const loadNasa = useCallback((bbox: BBox, date: string, opacity: number) => {
+        cancelActiveRasterRequest();
         const tileUrl = `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${date}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`;
         setOverlayStack([
             {
@@ -152,6 +210,7 @@ export function SatelliteDashboard() {
                 opacity,
                 visible: true,
                 blendMode: "normal",
+                maxNativeZoom: 9,
             },
         ]);
         setAiDetections(synthesizeAIDetections(bbox));
@@ -174,9 +233,10 @@ export function SatelliteDashboard() {
             renderKey: date,
         });
         setError(null);
-    }, []);
+    }, [cancelActiveRasterRequest]);
 
     const loadVlaanderen = useCallback((bbox: BBox, opacity: number) => {
+        cancelActiveRasterRequest();
         setOverlayStack([
             {
                 id: "vlaanderen-primary",
@@ -188,6 +248,7 @@ export function SatelliteDashboard() {
                 opacity,
                 visible: true,
                 blendMode: "normal",
+                maxNativeZoom: 21,
             },
         ]);
         setAiDetections(synthesizeAIDetections(bbox));
@@ -210,12 +271,26 @@ export function SatelliteDashboard() {
             renderKey: "ofw",
         });
         setError(null);
-    }, []);
+    }, [cancelActiveRasterRequest]);
 
     const loadCopernicus = useCallback(
         async (bbox: BBox) => {
             const w = requestWidth ?? 1024;
             const h = requestHeight ?? 768;
+            const requestKey = buildCopernicusRequestKey({
+                bbox,
+                startDate: dateRange.startDate,
+                endDate: dateRange.endDate,
+                layer,
+                cloudThreshold,
+                width: w,
+                height: h,
+                ndviBlendEnabled,
+            });
+
+            if (inFlightCopernicusRequestKeyRef.current === requestKey) {
+                return;
+            }
 
             const currentRequestId = requestIdRef.current + 1;
             requestIdRef.current = currentRequestId;
@@ -223,6 +298,7 @@ export function SatelliteDashboard() {
             abortControllerRef.current?.abort();
             const controller = new AbortController();
             abortControllerRef.current = controller;
+            inFlightCopernicusRequestKeyRef.current = requestKey;
 
             setLoading(true);
             setError(null);
@@ -260,7 +336,7 @@ export function SatelliteDashboard() {
                         imageUrl,
                         bbox: response.bbox,
                         layer: response.layer,
-                        opacity: baseOpacity,
+                        opacity: baseOpacityRef.current,
                         visible: true,
                         blendMode: "normal",
                     },
@@ -290,14 +366,21 @@ export function SatelliteDashboard() {
                                 imageUrl: ndviUrl,
                                 bbox: ndviResponse.bbox,
                                 layer: "ndvi",
-                                opacity: ndviOpacity,
+                                opacity: ndviOpacityRef.current,
                                 visible: true,
                                 blendMode: "multiply",
                             });
                         }
                     } catch {
+                        if (controller.signal.aborted || currentRequestId !== requestIdRef.current) {
+                            return;
+                        }
                         // NDVI blend fetch failed — continue with primary only
                     }
+                }
+
+                if (controller.signal.aborted || currentRequestId !== requestIdRef.current) {
+                    return;
                 }
 
                 setOverlayStack(nextLayers);
@@ -320,9 +403,12 @@ export function SatelliteDashboard() {
                 if (abortControllerRef.current === controller) {
                     abortControllerRef.current = null;
                 }
+                if (inFlightCopernicusRequestKeyRef.current === requestKey) {
+                    inFlightCopernicusRequestKeyRef.current = null;
+                }
             }
         },
-        [baseOpacity, cloudThreshold, dateRange, layer, ndviBlendEnabled, ndviOpacity, requestHeight, requestWidth]
+        [cloudThreshold, dateRange, layer, ndviBlendEnabled, requestHeight, requestWidth]
     );
 
     const handleModeButtonClick = useCallback(
@@ -331,7 +417,9 @@ export function SatelliteDashboard() {
             if (!currentBBox) return;
 
             if (mode === "basemap") {
+                cancelActiveRasterRequest();
                 setOverlayStack([]);
+                setAiDetections([]);
                 setScene(null);
                 setCacheMetadata(null);
                 setError(null);
@@ -347,8 +435,15 @@ export function SatelliteDashboard() {
             }
             void loadCopernicus(currentBBox);
         },
-        [baseOpacity, currentBBox, loadCopernicus, loadNasa, loadVlaanderen, nasaDate]
+        [baseOpacity, cancelActiveRasterRequest, currentBBox, loadCopernicus, loadNasa, loadVlaanderen, nasaDate]
     );
+
+    // Auto-reload NASA imagery when date or opacity changes.
+    useEffect(() => {
+        if (viewMode === "nasa" && currentBBox) {
+            loadNasa(currentBBox, nasaDate, baseOpacity);
+        }
+    }, [viewMode, currentBBox, nasaDate, baseOpacity, loadNasa]);
 
     // Auto-reload Copernicus imagery when viewport changes (zoom/pan).
     // Tile-based sources (NASA, Vlaanderen) handle zoom natively.
@@ -363,6 +458,8 @@ export function SatelliteDashboard() {
         if (viewMode !== "copernicus") return;
         void loadCopernicus(debouncedBBox);
     }, [debouncedBBox, viewMode, loadCopernicus]);
+
+    const [controlsOpen, setControlsOpen] = useState(true);
 
     return (
         <PageShell
@@ -384,17 +481,14 @@ export function SatelliteDashboard() {
 
             <Box
                 sx={{
-                    display: "grid",
+                    display: "flex",
                     gap: 2,
-                    gridTemplateColumns: {
-                        xs: "1fr",
-                        lg: "minmax(0, 1fr) 360px",
-                    },
+                    flexDirection: { xs: "column", lg: "row" },
                     alignItems: "stretch",
                     minHeight: { xs: "auto", lg: "calc(100vh - 250px)" },
                 }}
             >
-                <Stack sx={{ minHeight: { xs: 460, md: 620, lg: "100%" } }}>
+                <Box sx={{ flex: 1, position: "relative", minHeight: { xs: 460, md: 620, lg: "100%" } }}>
                     <CountryMap
                         country={country}
                         baseMapMode={baseMapMode}
@@ -406,53 +500,73 @@ export function SatelliteDashboard() {
                         onViewportChange={setCurrentBBox}
                         onViewportSizeChange={setMapSize}
                     />
-                </Stack>
-
-                <Box
-                    sx={{
-                        position: { lg: "sticky" },
-                        top: { lg: 96 },
-                        alignSelf: { lg: "start" },
-                    }}
-                >
-                    <MapControls
-                        countries={COUNTRY_OPTIONS}
-                        selectedCountryCode={selectedCountryCode}
-                        onCountryChange={setSelectedCountryCode}
-                        dateRange={dateRange}
-                        onDateRangeChange={setDateRange}
-                        layer={layer}
-                        onLayerChange={setLayer}
-                        cloudThreshold={cloudThreshold}
-                        onCloudThresholdChange={setCloudThreshold}
-                        currentBBox={currentBBox}
-                        scene={scene}
-                        cache={cacheMetadata}
-                        error={error}
-                        baseMapMode={baseMapMode}
-                        viewMode={viewMode}
-                        onModeButtonClick={handleModeButtonClick}
-                        nasaDate={nasaDate}
-                        onNasaDateChange={(value) => {
-                            setNasaDate(value);
-                            const days = dayjs().startOf("day").diff(dayjs(value).startOf("day"), "day");
-                            setNasaTimeOffsetDays(clamp(days, 0, 30));
+                    <Button
+                        onClick={() => setControlsOpen((prev) => !prev)}
+                        sx={{
+                            position: "absolute",
+                            top: 8,
+                            right: 8,
+                            zIndex: 1000,
+                            backgroundColor: "rgba(255, 255, 255, 0.92)",
+                            boxShadow: 1,
+                            minWidth: 0,
+                            px: 1,
+                            py: 0.5,
                         }}
-                        nasaTimeOffsetDays={nasaTimeOffsetDays}
-                        onNasaTimeOffsetDaysChange={setNasaTimeOffsetDays}
-                        baseOpacity={baseOpacity}
-                        onBaseOpacityChange={setBaseOpacity}
-                        ndviBlendEnabled={ndviBlendEnabled}
-                        onNdviBlendEnabledChange={setNdviBlendEnabled}
-                        ndviOpacity={ndviOpacity}
-                        onNdviOpacityChange={setNdviOpacity}
-                        aiOverlayEnabled={aiOverlayEnabled}
-                        onAiOverlayEnabledChange={setAiOverlayEnabled}
-                        aiOverlayOpacity={aiOverlayOpacity}
-                        onAiOverlayOpacityChange={setAiOverlayOpacity}
-                        activeLayers={overlayStack.map((item) => item.label)}
-                    />
+                    >
+                        {controlsOpen ? "<" : ">"}
+                    </Button>
                 </Box>
+
+                {controlsOpen && (
+                    <Box
+                        sx={{
+                            width: { xs: "100%", lg: 360 },
+                            flexShrink: 0,
+                            position: { lg: "sticky" },
+                            top: { lg: 96 },
+                            alignSelf: { lg: "start" },
+                        }}
+                    >
+                        <MapControls
+                            countries={COUNTRY_OPTIONS}
+                            selectedCountryCode={selectedCountryCode}
+                            onCountryChange={setSelectedCountryCode}
+                            dateRange={dateRange}
+                            onDateRangeChange={setDateRange}
+                            layer={layer}
+                            onLayerChange={setLayer}
+                            cloudThreshold={cloudThreshold}
+                            onCloudThresholdChange={setCloudThreshold}
+                            currentBBox={currentBBox}
+                            scene={scene}
+                            cache={cacheMetadata}
+                            error={error}
+                            baseMapMode={baseMapMode}
+                            viewMode={viewMode}
+                            onModeButtonClick={handleModeButtonClick}
+                            nasaDate={nasaDate}
+                            onNasaDateChange={(value) => {
+                                setNasaDate(value);
+                                const days = dayjs().startOf("day").diff(dayjs(value).startOf("day"), "day");
+                                setNasaTimeOffsetDays(clamp(days, 0, 30));
+                            }}
+                            nasaTimeOffsetDays={nasaTimeOffsetDays}
+                            onNasaTimeOffsetDaysChange={setNasaTimeOffsetDays}
+                            baseOpacity={baseOpacity}
+                            onBaseOpacityChange={setBaseOpacity}
+                            ndviBlendEnabled={ndviBlendEnabled}
+                            onNdviBlendEnabledChange={setNdviBlendEnabled}
+                            ndviOpacity={ndviOpacity}
+                            onNdviOpacityChange={setNdviOpacity}
+                            aiOverlayEnabled={aiOverlayEnabled}
+                            onAiOverlayEnabledChange={setAiOverlayEnabled}
+                            aiOverlayOpacity={aiOverlayOpacity}
+                            onAiOverlayOpacityChange={setAiOverlayOpacity}
+                            activeLayers={overlayStack.map((item) => item.label)}
+                        />
+                    </Box>
+                )}
             </Box>
         </PageShell>
     );

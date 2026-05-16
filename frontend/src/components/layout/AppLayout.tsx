@@ -1,19 +1,14 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
     AppBar,
     Avatar,
-    Badge,
     Box,
     Button,
     Chip,
     Divider,
     Drawer,
     IconButton,
-    List,
-    ListItemButton,
-    ListItemIcon,
-    ListItemText,
     Stack,
     Toolbar,
     Tooltip,
@@ -22,147 +17,31 @@ import {
 } from "@mui/material";
 import {
     AdminPanelSettings as AdminIcon,
-    CalendarMonth as CalendarIcon,
     ChevronLeft as ChevronLeftIcon,
     ChevronRight as ChevronRightIcon,
     Dashboard as DashboardIcon,
-    DarkMode as DarkModeIcon,
     Extension as PlatformIcon,
     FolderOpen as ProjectsIcon,
-    LightMode as LightModeIcon,
     Logout as LogoutIcon,
     Menu as MenuIcon,
     Notifications as NotificationsIcon,
     Person as ProfileIcon,
     SatelliteAlt as SatelliteIcon,
     Settings as SettingsIcon,
-    SettingsBrightness as SystemModeIcon,
 } from "@mui/icons-material";
 import { alpha, useTheme } from "@mui/material/styles";
 import { useQuery } from "@tanstack/react-query";
-import { useColorMode } from "../../app/colorModeContext";
 import { getNotifications } from "../../api/notifications";
 import { getProfile } from "../../api/profile";
 import { getMe } from "../../api/users";
 import { useAuth } from "../../hooks/useAuth";
 import { usePlatformMetadata } from "../../hooks/usePlatformMetadata";
 import { getInitials } from "../../utils/formatters";
+import { AppThemeToggle } from "./AppThemeToggle";
+import { NavigationBlock, type NavItem } from "./NavigationBlock";
 
 const DRAWER_WIDTH = 288;
 const COLLAPSED_DRAWER_WIDTH = 96;
-
-type NavItem = {
-    label: string;
-    icon: ReactNode;
-    path: string;
-    adminOnly?: boolean;
-    badge?: number;
-    group: "workspace" | "admin";
-};
-
-function ThemeToggle() {
-    const { colorMode, setColorMode } = useColorMode();
-    const cycle = () => {
-        const next: Record<string, typeof colorMode> = { light: "dark", dark: "system", system: "light" };
-        setColorMode(next[colorMode]);
-    };
-    const icon =
-        colorMode === "light" ? <LightModeIcon fontSize="small" /> :
-        colorMode === "dark" ? <DarkModeIcon fontSize="small" /> :
-        <SystemModeIcon fontSize="small" />;
-
-    return (
-        <Tooltip title={`Theme: ${colorMode}`}>
-            <IconButton onClick={cycle} size="small" sx={{ border: 1, borderColor: "divider", bgcolor: "background.paper" }}>
-                {icon}
-            </IconButton>
-        </Tooltip>
-    );
-}
-
-function NavBlock({
-    title,
-    items,
-    currentPath,
-    onNavigate,
-    collapsed,
-}: {
-    title: string;
-    items: NavItem[];
-    currentPath: string;
-    onNavigate: (path: string) => void;
-    collapsed: boolean;
-}) {
-    if (items.length === 0) {
-        return null;
-    }
-
-    return (
-        <Stack spacing={1}>
-            {!collapsed && (
-                <Typography variant="overline" color="text.secondary" sx={{ px: 1.5 }}>
-                    {title}
-                </Typography>
-            )}
-            <List disablePadding sx={{ display: "grid", gap: 0.75 }}>
-                {items.map((item) => {
-                    const selected =
-                        item.path === "/dashboard"
-                            ? currentPath === item.path
-                            : currentPath.startsWith(item.path);
-                    const itemButton = (
-                        <ListItemButton
-                            key={item.path}
-                            selected={selected}
-                            onClick={() => onNavigate(item.path)}
-                            sx={
-                                collapsed
-                                    ? {
-                                          minHeight: 48,
-                                          px: 1,
-                                          justifyContent: "center",
-                                      }
-                                    : undefined
-                            }
-                        >
-                            <ListItemIcon
-                                sx={{
-                                    minWidth: collapsed ? "auto" : 40,
-                                    justifyContent: "center",
-                                }}
-                            >
-                                {item.badge ? (
-                                    <Badge badgeContent={item.badge} color="error">
-                                        {item.icon}
-                                    </Badge>
-                                ) : (
-                                    item.icon
-                                )}
-                            </ListItemIcon>
-                            {!collapsed && (
-                                <ListItemText
-                                    primary={item.label}
-                                    secondary={selected ? "Current section" : undefined}
-                                    secondaryTypographyProps={{ sx: { fontSize: "0.74rem" } }}
-                                />
-                            )}
-                        </ListItemButton>
-                    );
-
-                    if (!collapsed) {
-                        return itemButton;
-                    }
-
-                    return (
-                        <Tooltip key={item.path} title={item.label} placement="right">
-                            {itemButton}
-                        </Tooltip>
-                    );
-                })}
-            </List>
-        </Stack>
-    );
-}
 
 export function AppLayout() {
     const [drawerOpen, setDrawerOpen] = useState(false);
@@ -200,8 +79,7 @@ export function AppLayout() {
     const navItems = useMemo<NavItem[]>(
         () => [
             { label: "Dashboard", icon: <DashboardIcon />, path: "/dashboard", group: "workspace" },
-            { label: "Copernicus", icon: <SatelliteIcon />, path: "/copernicus", group: "workspace" },
-            { label: "Calendar", icon: <CalendarIcon />, path: "/calendar", group: "workspace" },
+            { label: "Maps", icon: <SatelliteIcon />, path: "/maps", group: "workspace" },
             { label: coreDomainPlural, icon: <ProjectsIcon />, path: "/projects", group: "workspace" },
             ...(hasUserPlatformModule
                 ? [{ label: "Platform", icon: <PlatformIcon />, path: "/platform", group: "workspace" as const }]
@@ -252,10 +130,10 @@ export function AppLayout() {
                         py: drawerCollapsed ? 1.75 : 2.25,
                         mb: 2,
                         border: `1px solid ${currentTheme.palette.divider}`,
-                        background: `linear-gradient(155deg, ${alpha(currentTheme.palette.primary.main, currentTheme.palette.mode === "dark" ? 0.3 : 0.12)} 0%, ${alpha(
-                            currentTheme.palette.secondary.main,
-                            currentTheme.palette.mode === "dark" ? 0.18 : 0.08
-                        )} 100%)`,
+                        backgroundColor: alpha(
+                            currentTheme.palette.background.paper,
+                            currentTheme.palette.mode === "dark" ? 0.72 : 0.82
+                        ),
                         display: "flex",
                         alignItems: "center",
                         justifyContent: drawerCollapsed ? "center" : "flex-start",
@@ -291,7 +169,7 @@ export function AppLayout() {
             </Tooltip>
 
             <Stack spacing={drawerCollapsed ? 1 : 2}>
-                <NavBlock
+                <NavigationBlock
                     title="Product"
                     items={visibleNavItems.filter((item) => item.group === "workspace")}
                     currentPath={location.pathname}
@@ -300,7 +178,7 @@ export function AppLayout() {
                 />
                 {isAdmin && drawerCollapsed && <Divider sx={{ mx: 1.5 }} />}
                 {isAdmin && (
-                    <NavBlock
+                    <NavigationBlock
                         title="Administration"
                         items={visibleNavItems.filter((item) => item.group === "admin")}
                         currentPath={location.pathname}
@@ -395,7 +273,7 @@ export function AppLayout() {
                     width: { md: `calc(100% - ${desktopDrawerWidth}px)` },
                     borderBottom: 1,
                     borderColor: "divider",
-                    backgroundColor: alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.82 : 0.78),
+                    backgroundColor: alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.96 : 0.98),
                     color: "text.primary",
                     transition: theme.transitions.create(["left", "width"], {
                         duration: theme.transitions.duration.shorter,
@@ -426,7 +304,7 @@ export function AppLayout() {
                             {currentItem?.label ?? "Workspace"}
                         </Typography>
                     </Box>
-                    <ThemeToggle />
+                    <AppThemeToggle />
                 </Toolbar>
             </AppBar>
 

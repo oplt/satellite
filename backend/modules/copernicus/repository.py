@@ -10,7 +10,6 @@ from typing import Any, Generic, TypeVar
 from backend.core.config import settings
 from backend.modules.copernicus.models import AuthTokenRecord, RenderCacheRecord, StoredAsset
 
-
 T = TypeVar("T")
 
 

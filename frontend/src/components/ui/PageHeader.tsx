@@ -19,34 +19,11 @@ export function PageHeader({ eyebrow, title, description, actions, meta }: PageH
                 border: `1px solid ${theme.palette.divider}`,
                 px: { xs: 2.5, md: 4 },
                 py: { xs: 3, md: 4 },
-                background: `linear-gradient(180deg, ${alpha(theme.palette.background.paper, 0.96)} 0%, ${alpha(
-                    theme.palette.background.paper,
-                    0.88
-                )} 100%)`,
+                backgroundColor: alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.88 : 0.96),
                 boxShadow:
                     theme.palette.mode === "dark"
-                        ? "0 24px 60px rgba(2, 6, 23, 0.42)"
-                        : "0 22px 46px rgba(15, 23, 42, 0.08)",
-                "&::before": {
-                    content: '""',
-                    position: "absolute",
-                    inset: "auto auto -20% -8%",
-                    width: 240,
-                    height: 240,
-                    borderRadius: "50%",
-                    background: alpha(theme.palette.primary.main, 0.12),
-                    filter: "blur(8px)",
-                },
-                "&::after": {
-                    content: '""',
-                    position: "absolute",
-                    inset: "-10% -6% auto auto",
-                    width: 200,
-                    height: 200,
-                    borderRadius: "50%",
-                    background: alpha(theme.palette.secondary.main, 0.1),
-                    filter: "blur(10px)",
-                },
+                        ? "0 16px 44px rgba(0, 0, 0, 0.28)"
+                        : "0 4px 16px rgba(12, 10, 9, 0.04)",
             })}
         >
             <Stack
@@ -61,7 +38,6 @@ export function PageHeader({ eyebrow, title, description, actions, meta }: PageH
                         <Chip
                             label={eyebrow}
                             size="small"
-                            color="primary"
                             variant="outlined"
                             sx={{ mb: 1.5 }}
                         />

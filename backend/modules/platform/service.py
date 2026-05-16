@@ -3,7 +3,7 @@ import hmac
 import json
 import re
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from fastapi import HTTPException
@@ -28,7 +28,6 @@ from backend.modules.platform.schemas import (
     PlatformMetadataResponse,
 )
 from backend.modules.settings.repository import SettingsRepository
-
 
 MODULE_CATALOG = (
     {
@@ -385,7 +384,7 @@ class PlatformService:
 
         for field, value in payload.items():
             if field == "features":
-                setattr(plan, "features_json", value)
+                plan.features_json = value
             else:
                 setattr(plan, field, value)
 
@@ -412,7 +411,7 @@ class PlatformService:
                 plan_id=plan.id,
                 status="active",
                 cancel_at_period_end=False,
-                started_at=datetime.now(timezone.utc),
+                started_at=datetime.now(UTC),
                 current_period_end=current_period_end,
             )
         else:
@@ -447,7 +446,7 @@ class PlatformService:
         api_key = await self.repo.get_api_key_for_user(user.id, api_key_id)
         if not api_key:
             raise HTTPException(status_code=404, detail="API key not found")
-        api_key.revoked_at = datetime.now(timezone.utc)
+        api_key.revoked_at = datetime.now(UTC)
         await self.db.commit()
         await self.db.refresh(api_key)
         return api_key
@@ -512,7 +511,7 @@ class PlatformService:
         metadata = await self.get_platform_metadata()
         payload = {
             "event": "platform.test",
-            "sent_at": datetime.now(timezone.utc).isoformat(),
+            "sent_at": datetime.now(UTC).isoformat(),
             "app_name": metadata.app_name,
             "core_domain_plural": metadata.core_domain_plural,
             "target_user_id": user.id,
@@ -531,7 +530,7 @@ class PlatformService:
                         "X-Generic-App-Signature": signature,
                     },
                 )
-            webhook.last_tested_at = datetime.now(timezone.utc)
+            webhook.last_tested_at = datetime.now(UTC)
             webhook.last_response_status = response.status_code
             await self.db.commit()
             await self.db.refresh(webhook)
@@ -542,7 +541,7 @@ class PlatformService:
                 "error": None,
             }
         except httpx.HTTPError as exc:
-            webhook.last_tested_at = datetime.now(timezone.utc)
+            webhook.last_tested_at = datetime.now(UTC)
             webhook.last_response_status = None
             await self.db.commit()
             await self.db.refresh(webhook)
@@ -680,7 +679,7 @@ class PlatformService:
 
     @staticmethod
     def _calculate_period_end(interval: str) -> datetime | None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         normalized = interval.lower()
         if normalized == "month":
             return now + timedelta(days=30)
@@ -710,6 +709,6 @@ class PlatformService:
             return True
         if flag.rollout_percentage <= 0:
             return False
-        digest = hashlib.sha256(f"{flag.key}:{user_id}".encode("utf-8")).hexdigest()
+        digest = hashlib.sha256(f"{flag.key}:{user_id}".encode()).hexdigest()
         bucket = int(digest[:8], 16) % 100
         return bucket < flag.rollout_percentage

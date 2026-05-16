@@ -14,6 +14,8 @@ export function PageShell({ children, maxWidth = "xl", sx }: PageShellProps) {
                     position: "relative",
                     px: { xs: 2, md: 3 },
                     py: { xs: 3, md: 4 },
+                    contentVisibility: "auto",
+                    containIntrinsicSize: "900px",
                 },
                 ...(Array.isArray(sx) ? sx : sx ? [sx] : []),
             ]}

@@ -1,4 +1,5 @@
 import type { StyleSpecification } from "maplibre-gl";
+import { API_BASE } from "../api/client";
 import type { BaseMapConfig, BaseMapMode, CountryConfig } from "../types/satellite";
 
 export const COUNTRY_CONFIGS: Record<string, CountryConfig> = {
@@ -55,7 +56,7 @@ function buildTileUrls(baseMap: BaseMapConfig): string[] {
     return subdomains.map((subdomain) => baseMap.tileUrl.replaceAll("{s}", subdomain));
 }
 
-const defaultTileUrl = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+const defaultTileUrl = `${API_BASE}/map-tiles/openstreetmap/{z}/{x}/{y}`;
 const styleUrl = import.meta.env.VITE_MAP_STYLE_URL?.trim();
 const tileUrl =
     import.meta.env.VITE_BASEMAP_TILE_URL?.trim().length
@@ -74,8 +75,7 @@ export const BASE_MAP: BaseMapConfig = {
 };
 
 export const FLEMISH_ORTHOPHOTO_BASE_MAP: BaseMapConfig = {
-    tileUrl:
-        "https://geo.api.vlaanderen.be/OFW/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ofw&STYLE=&FORMAT=image/png&TILEMATRIXSET=GoogleMapsVL&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}",
+    tileUrl: `${API_BASE}/map-tiles/vlaamse-orthophoto/{z}/{x}/{y}`,
     attribution:
         '&copy; <a href="https://www.vlaanderen.be/datavindplaats/catalogus/wmts-orthofotowerkbestand" target="_blank" rel="noreferrer">Digitaal Vlaanderen orthofoto</a>',
     maxZoom: 21,

@@ -17,7 +17,6 @@ from backend.modules.copernicus.schemas import (
 from backend.modules.copernicus.service import CopernicusService
 from backend.modules.identity_access.models import User
 
-
 router = APIRouter()
 compat_router = APIRouter(include_in_schema=False)
 
